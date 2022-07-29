@@ -1,0 +1,105 @@
+---
+title: "New STR mutations in BXD"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  html_document:
+      df_print: paged
+      code_folding: hide
+      toc: true
+      toc_float: true
+      number_sections: true
+---
+
+<!-- Set with output width -->
+<style type="text/css">
+.main-container {
+    max-width: 1600px;
+    margin-left: auto;
+    margin-right: auto;
+}
+h1 {font-size: 2em}
+h2 {font-size: 1.5em}
+h3 {font-size: 1.17em}
+h4 {font-size: 1.12em}
+h5 {font-size: 0.83em}
+h6 {font-size: 0.75em}
+</style>
+
+```{r setup, include=FALSE}
+	# options
+	knitr::opts_chunk$set(echo = TRUE)
+	options(stringsAsFactors = FALSE)
+	# libraries
+	library(fs)
+	library(tidyverse)
+  library(devtools)
+	library(cowplot)
+	plot_dir = 'figs/'; dir_create(plot_dir)
+	data_dir = '../data/'
+```
+
+
+# Total number of new mutations
+```{r echo=TRUE, eval = TRUE}
+  denovo_strs = read_csv('../outs/denovo_strs_filtered.csv')
+  denovo_strs %>% 
+    count(chr, pos, end, name = 'n_strains') %>% 
+    count(n_strains, name = 'n_loci') %>% 
+    summarise_at(c('n_loci'), sum)
+```
+
+# Proportion new mutations by epoch
+
+```{r echo=TRUE, fig.width = 12, fig.height = 6, fig.align = 'center', cache = TRUE, eval = TRUE}
+  strain_info = read_csv('../outs/strain_info.csv')
+  gtloc_per_strain = read_csv('../outs/gtloc_per_strain.csv')
+  
+	# assemble plot that shows only the number of de novo hom loci per strain
+	newvar_perc_per_strain = denovo_strs %>%
+		  count(strain) %>%
+		  left_join(gtloc_per_strain, by = 'strain') %>%
+		  left_join(strain_info %>%
+			mutate(off_epoch = recode(off_epoch, epoch_1b = 'epoch_1a', epoch_1c = 'epoch_1a'),
+						off_epoch = str_replace(off_epoch, 'epoch_', '')) %>%
+			select(strain = bxd_id, off_epoch, gen_inbreeding), by = 'strain') %>%
+		  mutate(perc = n*100/n_loci) %>%
+		  # fix likely typo in gen inbreeding
+		  mutate(gen_inbreeding = if_else(strain == 'BXD029', 158, gen_inbreeding)) %>%
+		  # replace missing with average
+		  group_by(off_epoch) %>%
+		  mutate(gen_inbreeding = replace_na(gen_inbreeding, median(gen_inbreeding, na.rm = TRUE))) %>%
+		  ungroup %>%
+		  mutate(strain = fct_reorder(strain, desc(gen_inbreeding)))
+	p = newvar_perc_per_strain %>%
+		group_by(off_epoch) %>%
+		mutate(strain_ord = as.integer(strain)) %>%
+		mutate(is_middle_strain = strain_ord == floor(median(strain_ord)),
+			   avg_gens = mean(gen_inbreeding, na.rm = TRUE)) %>%
+		ungroup %>%
+		ggplot(aes(strain, n, fill = off_epoch)) + 
+		geom_bar(stat = 'identity', position = 'stack') +
+		geom_text(data = function(x) x %>% filter(is_middle_strain) %>% distinct(strain, off_epoch, avg_gens),
+				  aes(x = strain, label = sprintf('%0.1f\ngens', avg_gens)),
+				  y = Inf, hjust = 0.5, vjust = 1.5, inherit.aes = FALSE, size = 4) +
+		facet_grid(~off_epoch, scales = 'free_x', space = 'free_x') + # , switch = 'x') +
+		scale_fill_brewer(palette = 'Paired', guide = guide_legend(nrow = 3, title = 'epoch')) +
+		scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+		theme_half_open() + 
+		theme(axis.text.x = element_blank(),
+			  axis.ticks.x = element_blank(),
+			  # strip.text = element_blank(),
+			  panel.spacing = unit(1, 'pt'),
+			  # strip.background = element_rect(fill = NA),   
+			  legend.position = c(1, 0.8),
+			  legend.justification = c(1, 1)
+			  ) +
+		#labs(x = 'Strain', y = '% new mutations')
+	  labs(x = 'Strain', y='# new mutations')
+	p
+	# ggsave('test.pdf', plot = p, w = 10, h = 4)
+```
+
+# Location of de novos
+```{r echo=TRUE, fig.width = 12, fig.height = 6, fig.align = 'center', cache = TRUE, eval = TRUE}
+
+```
