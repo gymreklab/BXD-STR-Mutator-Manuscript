@@ -11,6 +11,8 @@ output:
 ---
 
 <!-- Set with output width -->
+
+```{=html}
 <style type="text/css">
 .main-container {
     max-width: 1600px;
@@ -24,7 +26,7 @@ h4 {font-size: 1.12em}
 h5 {font-size: 0.83em}
 h6 {font-size: 0.75em}
 </style>
-
+```
 ```{r setup, include=FALSE}
 	# options
 	knitr::opts_chunk$set(echo = TRUE)
@@ -34,12 +36,13 @@ h6 {font-size: 0.75em}
 	library(tidyverse)
   library(devtools)
 	library(cowplot)
+  library(karyoploteR)
 	plot_dir = 'figs/'; dir_create(plot_dir)
 	data_dir = '../data/'
 ```
 
-
 # Total number of new mutations
+
 ```{r echo=TRUE, eval = TRUE}
   denovo_strs = read_csv('../outs/denovo_strs_filtered.csv')
   denovo_strs %>% 
@@ -99,7 +102,13 @@ h6 {font-size: 0.75em}
 	# ggsave('test.pdf', plot = p, w = 10, h = 4)
 ```
 
-# Location of de novos
-```{r echo=TRUE, fig.width = 12, fig.height = 6, fig.align = 'center', cache = TRUE, eval = TRUE}
+# Location of de novos - TODO still in progress...
 
+```{r echo=TRUE, fig.width = 12, fig.height = 6, fig.align = 'center', cache = TRUE, eval = TRUE}
+detail.region = toGRanges(data.frame("chr13", 89e6, 92e6))
+kp <- plotKaryotype(genome="mm10", cytobands = GRanges())
+kpDataBackground(kp, data.panel = 1, r0=0, r1=0.45, color="white")
+kpPoints(kp, chr=denovo_strs$chr, x=denovo_strs$pos, y=rep(0.1, nrow(denovo_strs)), cex=0.01*(denovo_strs %>% 
+    count(chr, pos, end, name = 'n_strains')%>% pull(n_strains)))
+kpRect(kp, data=detail.region, y1=-1, y0=0)
 ```
