@@ -39,24 +39,37 @@ h6 {font-size: 0.75em}
   library(karyoploteR)
 	plot_dir = 'figs/'; dir_create(plot_dir)
 	data_dir = '../data/'
+	
+	denovo_strs = read_csv('../outs/denovo_strs_filtered.csv')
+	strain_info = read_csv('../outs/strain_info.csv')
+  gtloc_per_strain = read_csv('../outs/gtloc_per_strain.csv')
+  motif_info = read_csv('../outs/motif_info.csv')
 ```
 
-# Total number of new mutations
+# Total number of mutated loci
 
 ```{r echo=TRUE, eval = TRUE}
-  denovo_strs = read_csv('../outs/denovo_strs_filtered.csv')
-  denovo_strs %>% 
-    count(chr, pos, end, name = 'n_strains') %>% 
-    count(n_strains, name = 'n_loci') %>% 
-    summarise_at(c('n_loci'), sum)
+  # Total number of new mutations
+  num_mut = nrow(denovo_strs %>% distinct(chr, pos, end))
+  print(paste("Num mutations:", num_mut))
+
+  # How many are VNTR/STR
+  num_vntr = nrow(denovo_strs %>%
+    left_join(motif_info, by = c('chr', 'pos', 'end')) %>% 
+    filter(motif_len>6) %>%
+    distinct(chr, pos, end))
+  
+  num_str = nrow(denovo_strs %>%
+    left_join(motif_info, by = c('chr', 'pos', 'end')) %>% 
+    filter(motif_len<=6) %>%
+    distinct(chr, pos, end))
+  
+  print(paste("num str:", num_str, "num vntr:", num_vntr))
 ```
 
 # Proportion new mutations by epoch
 
 ```{r echo=TRUE, fig.width = 12, fig.height = 6, fig.align = 'center', cache = TRUE, eval = TRUE}
-  strain_info = read_csv('../outs/strain_info.csv')
-  gtloc_per_strain = read_csv('../outs/gtloc_per_strain.csv')
-  
 	# assemble plot that shows only the number of de novo hom loci per strain
 	newvar_perc_per_strain = denovo_strs %>%
 		  count(strain) %>%
@@ -72,7 +85,7 @@ h6 {font-size: 0.75em}
 		  group_by(off_epoch) %>%
 		  mutate(gen_inbreeding = replace_na(gen_inbreeding, median(gen_inbreeding, na.rm = TRUE))) %>%
 		  ungroup %>%
-		  mutate(strain = fct_reorder(strain, desc(gen_inbreeding)))
+		  mutate(strain = fct_reorder(strain, dplyr::desc(gen_inbreeding)))
 	p = newvar_perc_per_strain %>%
 		group_by(off_epoch) %>%
 		mutate(strain_ord = as.integer(strain)) %>%
