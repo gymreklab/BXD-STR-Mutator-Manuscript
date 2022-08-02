@@ -2,7 +2,10 @@ library(fs)
 library(tidyverse)
 data_dir = '../data/'
 
-######### Load new mtuations list ##########
+######### Load new mutations list ##########
+# Snorlax source: /gymreklab-tscc/mikhail/072321_bxd_mutator_paper/data/denovo_info/denovo_ri_gts_hom.tsv
+# Generated from:  /gymreklab-tscc/mikhail/072321_bxd_mutator_paper/workflows/5_prep_denovo_list/2_calc_delta_fou.R
+# Script now at scripts/2_calc_delta_fou.R 
 denovo_strs = read_tsv(path(data_dir, 'denovo_info/denovo_ri_gts_hom.tsv'), 
   col_types = cols(
     chr         = col_character(),
@@ -65,6 +68,8 @@ strain_info = strain_info %>%
 write_csv(strain_info, '../outs/strain_info.csv')
 
 ######### Load genotype info ##########
+# Snorlax source: /gymreklab-tscc/mikhail/072321_bxd_mutator_paper/data/str_gts/all_repcn_proc_nosegdup_nolowcr_segreg.rds
+# Code to generate: scripts/3_segreg.R 
 gt_strs = readRDS(fs::path(data_dir, 'str_gts/all_repcn_proc_nosegdup_nolowcr_segreg.rds'))
 write_csv(gt_strs, '../outs/all_repcn_proc_nosegdup_nolowcr_segreg.csv') # keep a csv version
 
@@ -84,7 +89,8 @@ gtloc_per_strain = gtloc_per_strain %>% select(strain, n_loci = ngt)
 write_csv(gtloc_per_strain, '../outs/gtloc_per_strain.csv')
 
 ######### Load motif info ##########
-# load motif info
+# Snorlax path: /gymreklab-tscc/mikhail/090520_unified_workflow/data/ref/motif_comp/str_regions_mm10_filt_w_hom.tsv.gz
+# Code to generate: scripts/calc_motif_info.R
 motif_info = read_tsv(fs::path(data_dir, 'str_regions_mm10_filt_w_hom.tsv.gz'), 
                       col_types = cols(
                         chr = col_character(),

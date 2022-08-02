@@ -37,7 +37,8 @@ h6 {font-size: 0.75em}
   library(devtools)
 	library(cowplot)
   library(karyoploteR)
-	plot_dir = 'figs/'; dir_create(plot_dir)
+	library(GGally)
+
 	data_dir = '../data/'
 	
 	denovo_strs = read_csv('../outs/denovo_strs_filtered.csv')
@@ -92,7 +93,7 @@ h6 {font-size: 0.75em}
 		mutate(is_middle_strain = strain_ord == floor(median(strain_ord)),
 			   avg_gens = mean(gen_inbreeding, na.rm = TRUE)) %>%
 		ungroup %>%
-		ggplot(aes(strain, n, fill = off_epoch)) + 
+		ggplot(aes(strain, perc, fill = off_epoch)) + 
 		geom_bar(stat = 'identity', position = 'stack') +
 		geom_text(data = function(x) x %>% filter(is_middle_strain) %>% distinct(strain, off_epoch, avg_gens),
 				  aes(x = strain, label = sprintf('%0.1f\ngens', avg_gens)),
@@ -109,19 +110,192 @@ h6 {font-size: 0.75em}
 			  legend.position = c(1, 0.8),
 			  legend.justification = c(1, 1)
 			  ) +
-		#labs(x = 'Strain', y = '% new mutations')
-	  labs(x = 'Strain', y='# new mutations')
+		labs(x = 'Strain', y = '% new mutations')
+	  #labs(x = 'Strain', y='# new mutations')
+		ggsave(fs::path('pdfs/', 'Fig1c.pdf'), plot = p, w = 10, h = 4)
 	p
-	# ggsave('test.pdf', plot = p, w = 10, h = 4)
 ```
 
-# Location of de novos - TODO still in progress...
+
+# Location of de novos
 
 ```{r echo=TRUE, fig.width = 12, fig.height = 6, fig.align = 'center', cache = TRUE, eval = TRUE}
+#pdf(fs::path("pdfs", "SuppFig-Karyoplot.pdf"))
 detail.region = toGRanges(data.frame("chr13", 89e6, 92e6))
 kp <- plotKaryotype(genome="mm10", cytobands = GRanges())
 kpDataBackground(kp, data.panel = 1, r0=0, r1=0.45, color="white")
 kpPoints(kp, chr=denovo_strs$chr, x=denovo_strs$pos, y=rep(0.1, nrow(denovo_strs)), cex=0.01*(denovo_strs %>% 
     count(chr, pos, end, name = 'n_strains')%>% pull(n_strains)))
-kpRect(kp, data=detail.region, y1=-1, y0=0)
+#dev.off()
+```
+
+# Size of mutations
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# prep input df 
+	xlims = -5:5
+	to_plt = denovo_strs %>%
+		left_join(strain_info %>%
+					mutate(off_epoch = recode(off_epoch, epoch_1b = 'epoch_1a', epoch_1c = 'epoch_1a'),
+						   off_epoch = str_replace(off_epoch, 'epoch_', '')) %>%
+					select(strain = bxd_id, off_epoch, gen_inbreeding), 
+				  by = 'strain') %>%
+		mutate(delta_fou = delta_fou*expand_sign)
+	# simple bar plot
+	p = to_plt %>%
+		ggplot() + 
+		geom_bar(aes(delta_fou, after_stat(prop), fill = off_epoch), position = 'dodge') +
+		scale_fill_brewer(palette = 'Paired') +
+		scale_x_continuous(breaks = scales::breaks_width(width = 1)) + 
+		coord_cartesian(xlim = xlims %>% range) +
+		theme_half_open() +
+		theme(legend.position = 'none') +
+		labs(x = expression(Delta~founder))
+	ggsave(fs::path('pdfs/', 'Fig1b.pdf'), plot = p, w = 10, h = 4)
+	p
+```
+
+# Size of mutations by motif length
+
+```{r echo=TRUE, fig.width = 8, fig.height = 5.5, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# prep input df 
+	xlims = -5:5
+	to_plt = denovo_strs %>%
+		left_join(motif_info %>% select(chr, pos, end, motif_len), by = c('chr', 'pos', 'end')) %>%
+		mutate(delta_fou = delta_fou*expand_sign)
+	# define color scheme for motifs
+	motif_colors = c(
+		'longer' = '#000000', 
+		'1'   = '#989896', 
+		'2'   = '#FF2900', 
+		'3'   = '#E7D707', 
+		'4'   = '#3F369B', 
+		'5'   = '#006D4A', 
+		'6'   = '#D12C9C')
+	# overall abundance of mono-, di-, tri-, tetra- ... strs
+	p1 = to_plt %>%
+		mutate(motif_len_cat = fct_other(motif_len %>% as.character, keep = 2:6, other_level = 'longer')) %>%
+		distinct(chr, pos, end, motif_len_cat) %>%
+		ggplot(aes(motif_len_cat, fill = motif_len_cat)) +
+		geom_bar(stat = 'count') +
+		scale_fill_manual(values = motif_colors) + 
+		scale_y_continuous(labels = scales::comma) + 
+		theme_half_open() +
+		theme(legend.position = 'none') + 
+		labs(x = 'Motif length', y = '# loci with new mutation')
+	# inheritance by founder
+	p2 = to_plt %>%
+		distinct(chr, pos, end, founder) %>%
+		ggplot(aes(founder, fill = founder)) +
+		geom_bar(stat = 'count', position = 'dodge') +
+		geom_text(aes(by = as.factor(1)), stat = "prop", position = position_stack(.5)) +
+		scale_y_continuous(labels = scales::comma, position = 'right') + 
+		# scale_fill_manual(values = c(B = 'forestgreen', D = 'dodgerblue')) +
+		scale_fill_brewer(palette = 'Set1') + 
+		coord_flip() +
+		theme_half_open() +
+		theme(legend.position = 'none') + 
+		labs(x = 'Founder\nHaplotype', y = '# loci with new mutation')
+	# mutation size by motif length
+	motif_recodes = c('1' = 'Homopolymers', '2' = 'Dinucleotides', '3' = 'Trinucleotides', '4' = 'Tetranucleotides', '5' = 'Pentanucleotides', '6' = 'Hexanucleotides', 'longer' = 'Repeat unit > 6bp')
+	names(motif_colors) = motif_recodes[names(motif_colors)]
+	p3 = to_plt %>%
+		mutate(motif_len_cat = fct_other(motif_len %>% as.character, keep = 2:6, other_level = 'longer')) %>%
+		mutate(motif_len_cat = recode(motif_len_cat, !!!motif_recodes)) %>%
+		ggplot() + 
+		geom_bar(aes(delta_fou, after_stat(prop), fill = motif_len_cat), position = 'dodge') +
+		scale_fill_manual(
+			values = motif_colors,
+			guide = guide_legend(title = 'Motif length', nrow = 1)
+		) + 
+		scale_x_continuous(breaks = scales::breaks_width(width = 2)) + 
+		coord_cartesian(xlim = xlims %>% range) +
+		facet_wrap(~motif_len_cat, nrow = 2) +
+		theme_half_open() +
+		theme(legend.position = 'none') +
+		labs(x = expression(Delta~founder), y = 'Fraction of mutations')
+
+	# assemble plots
+	p = plot_grid(
+			plot_grid(p1, p2, ncol = 1, rel_heights = c(1, 0.6), axis = 'lr', align = 'v', labels = c('a', 'b')),
+			p3 + theme(plot.margin = margin(t = 2, b = 2, l = 0.5, r = 0.5, unit = 'cm')),
+			rel_widths = c(0.65, 1), labels = c('', 'c'), nrow = 1 
+	) 
+	# ,
+	p
+	w = 10; h = 5
+	ggsave(fs::path('pdfs', 'Suppl_FigMutationsSummary.pdf'), p, w = w, h = h)
+```
+# Strains with mutations per locus
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	p = denovo_strs %>%
+		count(chr, pos, end, name = 'n_strains') %>%
+		count(n_strains, name = 'n_loci') %>%
+		ggplot(aes(n_strains, n_loci)) +
+		geom_bar(stat = 'identity') + 
+		geom_bar(data = ~.x %>% filter(n_strains == 1), 
+				 stat = 'identity', 
+				 fill = 'blue') + 
+		geom_text(data = ~.x %>% summarise(N = sum(n_loci)),
+				  aes(label = sprintf('N = %s', scales::comma(N))),
+				  x = Inf, y = Inf, hjust = 1.5, vjust = 3) +
+		# annotate(geom = 'text', label = sprintf('Total: %s', scales::comma(nrow(.data))),
+		# 	 x = Inf, y = Inf, hjust = 'inward', vjust = 'inward') +
+		coord_cartesian(xlim = c(1, 20)) + 
+		scale_y_continuous(labels = scales::comma) +
+		scale_x_continuous(breaks = scales::breaks_width(width = 4, offset = 1)) + 
+		theme_half_open() +
+		labs(y = 'Num. STRs', x = 'Num. strains with new mutation')
+	p
+	# ggsave('test.pdf', p, w = 6, h = 4)
+	p_e = p
+	ggsave(fs::path('pdfs/', 'Suppl_FigMutationsPerLocus.pdf'), p, w = 6, h = 4)
+```
+
+# How many mutations are private
+```{r echo=TRUE, eval = TRUE}
+num_mut_loci = denovo_strs %>%
+    count(chr, pos, end, name = 'n_strains') %>%
+    count(n_strains, name = 'n_loci') %>% summarise_at("n_loci", sum)
+num_private = denovo_strs %>%
+    count(chr, pos, end, name = 'n_strains') %>%
+     count(n_strains, name = 'n_loci') %>% filter(n_strains==1) %>% pull(n_loci)
+print(paste("percent of loci with singleton mutation", num_private/num_mut_loci))
+```
+
+# PCA of new mutations
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# form the strain by locus matrix for PCA
+	strain_by_loc = denovo_strs %>%
+	unite('locus', c('chr', 'pos', 'end')) %>%
+		mutate(has_newvar = 1) %>%
+		pivot_wider(id_cols = 'strain', names_from = 'locus', 
+			values_from = 'has_newvar', values_fill = list(has_newvar = 0))
+	# run pca
+	pca_res = prcomp(strain_by_loc %>% column_to_rownames(var = 'strain'), 
+			 scale. = FALSE, center = TRUE)
+	lam = pca_res$sdev[1:2]
+	lam = lam * sqrt(nrow(pca_res$x))
+	# make plot
+	to_plt = pca_res$x %>% 
+	as.data.frame %>%
+	rownames_to_column(var = 'strain') %>%
+	as_tibble %>%
+	select(strain, PC1, PC2) %>%
+	mutate(PC1 = PC1/lam[1], 
+		   PC2 = PC2/lam[2]) %>%
+	left_join(strain_info %>%
+			  mutate(off_epoch = recode(off_epoch, epoch_1b = 'epoch_1a', epoch_1c = 'epoch_1a'),
+				 off_epoch = str_replace(off_epoch, 'epoch_', '')) %>%
+			  select(strain = bxd_id, off_epoch, gen_inbreeding), by = 'strain')
+	p = to_plt %>%
+	ggplot(aes(PC1, PC2, col = off_epoch)) +
+	geom_point() +
+	scale_color_brewer(palette = 'Paired') +
+	theme_half_open() +
+	theme(
+		  legend.position = 'none'
+	)
+	p
+	ggsave(fs::path('pdfs/', 'Fig1d.pdf'), p, w = 4, h = 4)
 ```
