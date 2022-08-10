@@ -115,3 +115,12 @@ motif_info = motif_info %>% select(c(chr, pos, end, motif_len, motif, canon_moti
 # Write to file
 write_csv(motif_info, '../outs/motif_info.csv')
 
+######### Load data needed for QTL mapping ##########
+# Snorlax path: /gymreklab-tscc/mikhail/072321_bxd_mutator_paper/data/snp_qtl2/gw/
+
+# load qtl2 formatted objects
+# genotype probabilities, physical map and strain kinship
+snp_probs   = readRDS(path(data_dir, 'qtl_data/probs.rds'))
+snp_pmap    = readRDS(path(data_dir, 'qtl_data/pmap.rds'))
+snp_kinship = readRDS(path(data_dir, 'qtl_data/kinship.rds'))
+
