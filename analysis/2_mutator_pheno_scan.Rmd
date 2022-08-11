@@ -1,0 +1,532 @@
+---
+title: "New STR mutations in BXD"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  html_document:
+      df_print: paged
+      code_folding: hide
+      toc: true
+      toc_float: true
+      number_sections: true
+---
+
+<!-- Set with output width -->
+
+```{=html}
+<style type="text/css">
+.main-container {
+    max-width: 1600px;
+    margin-left: auto;
+    margin-right: auto;
+}
+h1 {font-size: 2em}
+h2 {font-size: 1.5em}
+h3 {font-size: 1.17em}
+h4 {font-size: 1.12em}
+h5 {font-size: 0.83em}
+h6 {font-size: 0.75em}
+</style>
+```
+```{r setup, include=FALSE}
+	# options
+	knitr::opts_chunk$set(echo = TRUE)
+	options(stringsAsFactors = FALSE)
+	# libraries
+	library(fs)
+	library(tidyverse)
+  library(devtools)
+	library(cowplot)
+	library(GGally)
+	library(ggbeeswarm)
+  library(progress)
+	library(qtl2)
+	library(readr)
+	library(ggrepel)
+
+	# Global configs
+	data_dir = '../data/'
+  n_permute = 100
+	cache_dir = '../data/analysis_cache/bxd_qtl_scans'; dir_create(cache_dir)
+	
+	denovo_strs = readr::read_csv('../outs/denovo_strs_filtered.csv')
+	strain_info = readr::read_csv('../outs/strain_info.csv')
+  gtloc_per_strain = readr::read_csv('../outs/gtloc_per_strain.csv')
+  motif_info = readr::read_csv('../outs/motif_info.csv')
+  qtl_data = readRDS('../outs/qtl_data.rds')
+  # load function for calculating phenotypes
+	source('../utils/calc_pheno_vals.R')
+
+  # define color scheme for motifs
+	motif_colors = c(
+		'all' = '#000000', 
+		'1'   = '#989896', 
+		'2'   = '#FF2900', 
+		'3'   = '#E7D707', 
+		'4'   = '#3F369B', 
+		'5'   = '#006D4A', 
+		'6'   = '#D12C9C')
+  
+	phenos = c(
+		'% denovo'           = 'denovo_perc_abundance',
+		'delta (RU) expan'   = 'expand_delta_ru',
+		'delta (RU) contr'   = 'contract_delta_ru',
+		'% expanded'         = 'proportion_expanded'
+	)
+```
+
+
+# Load data 
+
+#. Attach motif info to new variant str information
+#. Bundle epoch1b and epoch1c together with epoch1a
+#. Fix BXD029 gen_inbreeding
+
+```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# join motif length to new variant STRs (note: these are homozygous)
+	denovo_strs = denovo_strs %>%
+	left_join(motif_info %>% select(chr, pos, end, motif_len), by = c('chr', 'pos', 'end'))
+	strain_info = strain_info %>%
+	  mutate(off_epoch = recode(off_epoch, epoch_1a = 'epoch_1', epoch_1b = 'epoch_1', epoch_1c = 'epoch_1')) %>%
+	  mutate(gen_inbreeding = ifelse(bxd_id == 'BXD029', 158, gen_inbreeding))
+	num_mut = nrow(denovo_strs %>% distinct(chr, pos, end))
+  print(paste("Num mutations:", num_mut))
+```
+
+# Calculate all phenotypes for different filtering params
+```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+  # calculate %expanded for different motif lengths and filtering parameters
+	mls = c('all', 2, 3, 4, 5, 6) %>% set_names(.) # motif len
+	mpps = c(0, 5, 10, 20, 50) %>% set_names(.) # min number of total mutations per strain to include
+	mdsls = c(1000, 50, 10, 3, 1) %>% set_names(.) # max_denovo_strains_per_loc
+	
+	all_phenos = 
+	  map_df(phenos, function(pheno) {
+	    map_df(mls, function(ml) {
+			  map_df(mpps, function(min_pts_per_phe) {
+				  map_df(mdsls, function(max_denovo_strains_per_loc) {
+					  calc_pheno_vals(denovo_strs, pheno, 
+									min_pts_per_phe = min_pts_per_phe, 
+									max_denovo_strains_per_loc = max_denovo_strains_per_loc, 
+									ml = ml,
+									gtloc_per_strain = gtloc_per_strain %>% dplyr::rename(n_gt = n_loci)) %>%
+						mutate(motif_len = as.character(ml))
+				}, .id = 'max_denovo_strains_per_loc')
+			}, .id = 'min_pts_per_phe')
+		}, .id='motif_len')
+	}, .id='metric')
+```
+
+
+# Visualize %expanded by motif length
+```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# visualize perc expanded. Note this is with *no filtering*
+	p = all_phenos %>%
+		filter(min_pts_per_phe == 0, max_denovo_strains_per_loc == 1000) %>%
+		filter(metric == '% expanded') %>%
+		mutate(motif_len = fct_relevel(motif_len, c('all', 2:6))) %>%
+		ggplot(aes(motif_len, pheno, color = motif_len)) +
+		geom_quasirandom(dodge.width = 0.9) +
+		geom_boxplot(aes(group = motif_len), 
+					 fill = 'white', color = 'black', 
+					 width = 0.2, outlier.shape = NA,
+					 position = position_dodge(width = 0.9)) + 
+		# scale_color_brewer(palette = 'Dark2', guide = guide_legend(title = NULL)) + 
+		scale_color_manual(
+			values = motif_colors,
+			guide = guide_legend(title = NULL, nrow = 1)
+		) + 
+		theme_half_open() +
+		theme(
+			strip.text.y = element_text(angle = 0),
+			# axis.text.y = element_blank(),
+			# axis.ticks.y = element_blank(),
+			# axis.title.y = element_blank(),
+			legend.position = 'top'
+		)
+	p
+	ggsave(fs::path('pdfs', 'Suppl_FigPercExpandedDistribution.pdf'), p, w = 6, h = 4)
+```
+
+# GW scan all phenotypes with loc/strain filtering
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = FALSE, eval = TRUE, warning = FALSE, message = FALSE, warning = FALSE}
+		final_phenos_all = map_df(phenos, function(pheno) {
+			pheno_vals = BXDstrs::calc_pheno_vals(denovo_strs, pheno, 
+										 min_pts_per_phe = 10, max_denovo_strains_per_loc = 10, ml = 4, 
+										 gtloc_per_strain = gtloc_per_strain %>% dplyr::rename(n_gt = n_loci))
+		})
+		# run QTL mapping using SNP founder states and final calculated phenotype values
+		# all chromosomes
+		a_thresh = 0.05
+		pb = progress_bar$new(total = length(phenos))
+		final_phenos_qtl = map(phenos, function(metric) {
+			# user out
+			# metric = 'proportion_expanded'
+			pb$tick()
+			# set strains
+			# NOTE: actually all strains is better
+			# strains = strain_info %>% filter(off_epoch %in% c('epoch_2', 'epoch_3b')) %>% pull(bxd_id) %>% unique
+			strains = strain_info %>% filter(off_epoch != 'founder') %>% pull(bxd_id) %>% unique
+			# subset phenotype values
+			this_phenos = final_phenos_all %>% 
+				filter(metric == !!metric) %>%
+				filter(strain %in% strains) %>%
+				select(strain, pheno) %>% 
+				column_to_rownames(var = 'strain') %>% as.matrix
+			# check if enough strains
+			pheno_strains = row.names(this_phenos)
+			if (length(pheno_strains) < 5) return(NULL)
+			#
+			this_probs = qtl_data$snp_probs[pheno_strains,]
+			this_kinship = qtl_data$snp_kinship
+			this_covar = strain_info %>% 
+				select(bxd_id, gen_inbreeding) %>% 
+				filter(bxd_id %in% pheno_strains) %>%
+				column_to_rownames(var = 'bxd_id') %>% as.matrix
+			# run qtl analysis
+			qtl_res = scan1(genoprobs = this_probs, 
+							pheno = this_phenos,
+							kinship = this_kinship,
+							addcovar = this_covar
+			)
+			perm_res = scan1perm(genoprobs = this_probs, 
+								 pheno = this_phenos,
+								 kinship = this_kinship,
+								 addcovar = this_covar,
+								 n_perm = n_permute
+			)
+			# output
+			return(list(qtl_res = qtl_res, perm_res = perm_res))
+		})
+		# make tidy
+		qtl_res = map_df(final_phenos_qtl, function(.x) {
+			as.data.frame(.x$qtl_res) %>%
+				rownames_to_column(var = 'marker') %>%
+				as_tibble %>%
+				dplyr::rename(LOD = pheno) %>%
+				mutate(lod_thresh = quantile(.x$perm_res[,'pheno'], probs = 1-a_thresh, names = FALSE)) %>%
+				# left_join(snp_phys_map %>% select(marker, chr, pos, end), by = 'marker')
+				separate('marker', c('chr', 'pos', 'end'), convert = TRUE)
+		}, .id = 'metric')
+		# combine and save
+		final_res = list(pheno_vals = final_phenos_all, qtl_res = qtl_res, qtl_res_raw = map(final_phenos_qtl, 'qtl_res'))
+		saveRDS(final_res, cache_file)
+	} else { final_res = readRDS(cache_file) }
+```
+
+# GW scan %expand vary filtering parameters and by-epoch
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = FALSE, eval = TRUE, warning = FALSE, message = FALSE}
+	### Min-points per phenotype and max strains per denovo filtering
+	# calculate %expanded for different motif lengths and filtering parameters
+	mls = c('all', 2, 3, 4, 5, 6) %>% set_names(.)
+	mpps = c(0, 5, 10, 20, 50) %>% set_names(.)
+	mdsls = c(1000, 50, 10, 3, 1) %>% set_names(.)
+	cache_file = fs::path(cache_dir, 'perc_expand_pheno.rds'); redo = FALSE
+	if (!file_exists(cache_file) | redo) {
+		pb = progress_bar$new(total = length(mls)*length(mpps)*length(mdsls))
+		perc_expand_pheno = map_df(mls, function(ml) {
+			map_df(mpps, function(min_pts_per_phe) {
+				map_df(mdsls, function(max_denovo_strains_per_loc) {
+					pb$tick()
+					BXDstrs::calc_pheno_vals(denovo_strs, 'proportion_expanded', 
+									min_pts_per_phe = min_pts_per_phe, 
+									max_denovo_strains_per_loc = max_denovo_strains_per_loc, 
+									ml = ml) %>%
+						mutate(motif_len = as.character(ml))
+				}, .id = 'max_denovo_strains_per_loc')
+			}, .id = 'min_pts_per_phe')
+		})
+		saveRDS(perc_expand_pheno, cache_file)
+	} else { perc_expand_pheno = readRDS(cache_file) }
+	# run QTL mapping using SNP founder states for %expanded phenotype
+	# min_pts_per_phe, max_denovo_strains_per_loc and motif filters
+	# all strains
+	# chr13 only
+	cache_file = fs::path(cache_dir, 'perc_expand_final_qtl.rds'); redo = FALSE
+	chroms = c('13', '17')
+	if (!file_exists(cache_file) | redo) {
+		a_thresh = 0.05
+		# loop over motif lengths
+		pb = progress_bar$new(total = perc_expand_pheno %>% distinct(min_pts_per_phe, max_denovo_strains_per_loc, motif_len) %>% nrow())
+		perc_expand_final_qtl = perc_expand_pheno %>%
+			nest(pheno_vals = c(strain, pheno, n)) %>%
+			group_by(min_pts_per_phe, max_denovo_strains_per_loc, motif_len, metric) %>%
+			summarise(qtl_res = map(pheno_vals, function(.x) {
+				# user out
+				pb$tick()
+				# set strains
+				strains = strain_info %>% pull(bxd_id) %>% unique
+					.x = .x %>% filter(strain %in% strains)
+				# transform the 
+				this_phenos = .x %>%
+					select(strain, pheno) %>% 
+					column_to_rownames(var = 'strain') %>% as.matrix
+				# get strains for which we actually have a phenotype
+				pheno_strains = .x %>% pull(strain)
+				if (length(pheno_strains) < 5) return(NULL)
+				# subset snp probabilities and kinship matrices
+				this_probs = qtl_data$snp_probs[pheno_strains,chroms]
+				this_kinship = qtl_data$snp_kinship[chroms]
+				this_covar = strain_info %>% 
+					select(bxd_id, gen_inbreeding) %>% 
+					filter(bxd_id %in% pheno_strains) %>%
+					column_to_rownames(var = 'bxd_id') %>% as.matrix
+				# run qtl analysis
+				qtl_res = scan1(genoprobs = this_probs, 
+								pheno = this_phenos,
+								kinship = this_kinship,
+								addcovar = this_covar
+				)
+				perm_res = scan1perm(genoprobs = this_probs, 
+									 pheno = this_phenos,
+									 kinship = this_kinship,
+									 addcovar = this_covar,
+									 n_perm = n_permute
+				)
+				# combine
+				qtl_res = as.data.frame(qtl_res) %>%
+					rownames_to_column(var = 'marker') %>%
+					as_tibble %>%
+					rename(LOD = pheno) %>%
+					mutate(lod_thresh = quantile(perm_res[,'pheno'], probs = 1-a_thresh, names = FALSE)) %>%
+					# left_join(snp_phys_map %>% select(marker, chr, pos, end), by = 'marker')
+					separate('marker', c('chr', 'pos', 'end'), convert = TRUE)
+				# output
+				return(qtl_res)
+			}), .groups = 'drop')
+		perc_expand_final_qtl = perc_expand_final_qtl %>% unnest(cols = qtl_res)
+		saveRDS(perc_expand_final_qtl, cache_file)
+	} else { perc_expand_final_qtl = readRDS(cache_file) }
+	### By-epoch scan
+	# run QTL mapping separately for different epochs
+	# keep other settings default: all motifs, no mpp or msdl filtering
+	# groups epoch together
+	epoch_grps = strain_info %>%
+		select(strain = bxd_id, off_epoch) %>%
+		mutate(off_epoch = str_replace(off_epoch, 'epoch_', '')) %>%
+		filter(off_epoch != 'founder') %>%
+		mutate(epoch_grp = if_else(off_epoch %in% 4:7, '4-7', off_epoch))
+	# add the 2+3a group
+	epoch_grps = epoch_grps %>%
+		bind_rows(epoch_grps %>% filter(epoch_grp %in% c('2', '3b')) %>% mutate(epoch_grp = '2,3b')) %>%
+		bind_rows(epoch_grps %>% mutate(epoch_grp = 'all'))
+	# run by-epoch scan
+	cache_file = fs::path(cache_dir, 'perc_expand_by_epoch_qtl.rds'); redo = FALSE
+	if (!file_exists(cache_file) | redo) {
+		a_thresh = 0.05
+		# loop over motif lengths
+		perc_expand_by_epoch = epoch_grps %>%
+			split(.$epoch_grp) %>%
+			map('strain') %>%
+			map_df(function(strains) {
+				# transform the 
+				this_phenos = perc_expand_pheno %>%
+					filter(min_pts_per_phe == 0, 
+						   max_denovo_strains_per_loc == 1000,
+						   motif_len == 'all') %>%
+					filter(strain %in% strains) %>%
+					select(strain, pheno) %>% 
+					column_to_rownames(var = 'strain') %>% as.matrix
+				# get strains for which we actually have a phenotype
+				pheno_strains = row.names(this_phenos)
+				if (length(pheno_strains) < 5) return(NULL)
+				# subset snp probabilities and kinship matrices
+				this_probs = qtl_data$snp_probs[pheno_strains,]
+				this_kinship = qtl_data$snp_kinship[]
+				this_covar = strain_info %>% 
+					select(bxd_id, gen_inbreeding) %>% 
+					filter(bxd_id %in% pheno_strains) %>%
+					column_to_rownames(var = 'bxd_id') %>% as.matrix
+				# run qtl analysis
+				qtl_res = scan1(genoprobs = this_probs,
+								pheno = this_phenos,
+								kinship = this_kinship,
+								addcovar = this_covar
+				)
+				perm_res = scan1perm(genoprobs = this_probs,
+									 pheno = this_phenos,
+									 kinship = this_kinship,
+									 addcovar = this_covar,
+									 n_perm = n_permute
+				)
+				# combine
+				qtl_res = as.data.frame(qtl_res) %>%
+					rownames_to_column(var = 'marker') %>%
+					as_tibble %>%
+					dplyr::rename(LOD = pheno) %>%
+					mutate(lod_thresh = quantile(perm_res[,'pheno'], probs = 1-a_thresh, names = FALSE)) %>%
+					# left_join(snp_phys_map %>% select(marker, chr, pos, end), by = 'marker')
+					separate('marker', c('chr', 'pos', 'end'), convert = TRUE)
+				# output
+				return(qtl_res)
+			}, .id = 'epoch_grp')
+		# separate out position of markers
+		saveRDS(perc_expand_by_epoch, cache_file)
+	} else { perc_expand_by_epoch = readRDS(cache_file) }
+	### By-epoch scan with filtering
+	# re-run by-epoch scan
+	cache_file = fs::path(cache_dir, 'perc_expand_by_epoch_final_qtl.rds'); redo = FALSE
+	if (!file_exists(cache_file) | redo) {
+		a_thresh = 0.05
+		# loop over motif lengths
+		perc_expand_by_epoch_final = epoch_grps %>%
+			split(.$epoch_grp) %>%
+			map('strain') %>%
+			map_df(function(strains) {
+				# transform the 
+				this_phenos = perc_expand_pheno %>%
+					filter(min_pts_per_phe == 10, 
+						   max_denovo_strains_per_loc == 10,
+						   motif_len == '4') %>%
+					filter(strain %in% strains) %>%
+					select(strain, pheno) %>% 
+					column_to_rownames(var = 'strain') %>% as.matrix
+				# get strains for which we actually have a phenotype
+				pheno_strains = row.names(this_phenos)
+				if (length(pheno_strains) < 5) return(NULL)
+				# subset snp probabilities and kinship matrices
+				this_probs = qtl_data$snp_probs[pheno_strains,]
+				this_kinship = qtl_data$snp_kinship[]
+				this_covar = strain_info %>% 
+					select(bxd_id, gen_inbreeding) %>% 
+					filter(bxd_id %in% pheno_strains) %>%
+					column_to_rownames(var = 'bxd_id') %>% as.matrix
+				# run qtl analysis
+				qtl_res = scan1(genoprobs = this_probs, 
+								pheno = this_phenos,
+								kinship = this_kinship,
+								addcovar = this_covar
+				)
+				perm_res = scan1perm(genoprobs = this_probs, 
+									 pheno = this_phenos,
+									 kinship = this_kinship,
+									 addcovar = this_covar,
+									 n_perm = n_permute
+				)
+				# combine
+				qtl_res = as.data.frame(qtl_res) %>%
+					rownames_to_column(var = 'marker') %>%
+					as_tibble %>%
+					dplyr::rename(LOD = pheno) %>%
+					mutate(lod_thresh = quantile(perm_res[,'pheno'], probs = 1-a_thresh, names = FALSE)) %>%
+					# left_join(snp_phys_map %>% select(marker, chr, pos, end), by = 'marker')
+					separate('marker', c('chr', 'pos', 'end'), convert = TRUE)
+				# output
+				return(qtl_res)
+			}, .id = 'epoch_grp')
+		# separate out position of markers
+		saveRDS(perc_expand_by_epoch_final, cache_file)
+	} else { perc_expand_by_epoch_final = readRDS(cache_file) }
+```
+
+# Visualize %expanded by motif length
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	p = perc_expand_pheno %>%
+		filter(min_pts_per_phe == 0, max_denovo_strains_per_loc == 1000) %>%
+		dplyr::rename('% expanded' = pheno) %>%
+		mutate(motif_len = fct_relevel(motif_len, c('all', 2:6))) %>%
+		# mutate(max_denovo_strains_per_loc = fct_relevel(max_denovo_strains_per_loc, 
+		# 						as.character(mdsls)) %>% fct_relabel(~str_c('n<=', .x))) %>%
+		ggplot(aes(motif_len, `% expanded`, color = motif_len)) +
+		geom_quasirandom(dodge.width = 0.9) +
+		geom_boxplot(aes(group = motif_len), 
+					 fill = 'white', color = 'black', 
+					 width = 0.2, outlier.shape = NA,
+					 position = position_dodge(width = 0.9)) + 
+		# scale_color_brewer(palette = 'Dark2', guide = guide_legend(title = NULL)) + 
+		scale_color_manual(
+			values = motif_colors,
+			guide = guide_legend(title = NULL, nrow = 1)
+		) + 
+		theme_half_open() +
+		theme(
+			strip.text.y = element_text(angle = 0),
+			# axis.text.y = element_blank(),
+			# axis.ticks.y = element_blank(),
+			# axis.title.y = element_blank(),
+			legend.position = 'top'
+		)
+	p
+	p_e = p
+	
+	#
+	ggsave(fs::path('pdfs', 'Suppl_FigPercExpandedDistribution.pdf'), p, w = 6, h = 4)
+```
+# Visualize scan sensitivity results %expanded
+
+## Min-points per phenotype and max strains per denovo filtering
+
+#. All strains used
+#. Robust to filtering conditions and using STRs with different motif lengths
+#. Difference by `max_denovo_strains_per_loc`
+#. Small difference by `min_pts_per_phe`
+
+```{r echo=TRUE, fig.width = 16, fig.height = 8, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# loop over chromosomes
+	by_chrom = map2(list('chr13', 'chr17') %>% set_names(.), 
+					list(c(0, 10), c(0, 4)), 
+		function(chrom, ylims) {
+	# made a list of plots
+	p_list = perc_expand_final_qtl %>% 
+		filter(chr == chrom) %>%
+		mutate(
+			motif_len = fct_relevel(motif_len, mls),
+			min_pts_per_phe = fct_relevel(min_pts_per_phe, as.character(mpps)) %>% fct_relabel(~str_c('n>=', .x)),
+			max_denovo_strains_per_loc = fct_relevel(max_denovo_strains_per_loc, as.character(mdsls)) %>% fct_relabel(~str_c('n<=', .x))
+		) %>%
+		nest(data = c(motif_len, chr, pos, end, LOD, lod_thresh)) %>%
+		arrange(min_pts_per_phe, max_denovo_strains_per_loc) %>%
+		mutate(grid_pos = 1:n()) %>%
+		nest(cond = c(grid_pos, min_pts_per_phe, max_denovo_strains_per_loc)) %>%
+		mutate(r_id = 1:n()) %>%
+		group_by(r_id) %>%
+		mutate(p = map2(cond, data, function(cond, data) {
+			p = data %>%
+				mutate(across(c(pos, end), ~.x/1e6)) %>%
+				ggplot(aes(pos, LOD, color = motif_len)) +
+				geom_step() +
+				geom_text_repel(data = ~.x %>% 
+							group_by(motif_len) %>% 
+							slice_max(n = 1, order_by = LOD),
+						aes(label = sprintf('%0.1f', LOD), x = pos, y = LOD), color = 'black') +
+				geom_hline(data = ~.x %>% distinct(motif_len, lod_thresh),
+					   aes(yintercept = lod_thresh), linetype = 'dashed') + 
+				facet_wrap(~motif_len, nrow = 1, strip.position = 'bottom', drop = FALSE) +
+				scale_y_continuous(expand = expansion(0.01, 0)) + 
+				scale_color_brewer(palette = 'Paired', drop = FALSE) + 
+				coord_cartesian(ylim = ylims) +
+				labs(y = cond %>% pull(min_pts_per_phe), 
+				 title = cond %>% pull(max_denovo_strains_per_loc)) +
+				theme_half_open() +
+				theme(axis.text.x = element_blank(),
+				  axis.ticks.x = element_blank(),
+				  axis.title.x = element_blank(),
+				  strip.background = element_blank(),
+				  strip.placement = 'outside',
+				  axis.title.y = element_text(size = 12, face = 'bold'),
+				  plot.title = element_text(hjust = 0.5, size = 12),
+				  panel.spacing = unit(2, 'pt'),
+				  plot.margin = margin(0.1, 0.1, 0.1, 0.1, 'cm'),
+				  legend.position = 'none')
+			if (cond$grid_pos > 5) p = p + theme(plot.title = element_blank())
+			if (cond$grid_pos %% 5 != 1) p = p + theme(axis.title.y = element_blank(), 
+								 axis.text.y = element_blank(), 
+								 axis.ticks.y = element_blank(),
+								 axis.line.y = element_blank())
+			if (cond$grid_pos < 21) p = p + theme(strip.text = element_blank())
+			p
+		}))
+	p = plot_grid(plotlist = p_list$p, nrow = 5, ncol = 5, 
+				  rel_heights = c(1.1, 0.9, 0.9, 0.9, 1.1),
+				  rel_widths = c(1.1, 0.9, 0.9, 0.9, 0.9)
+	)
+	# ggsave('test.pdf', p, w = 16, h = 8) 
+	return(p)
+	})
+  p = by_chrom$chr13
+	p
+	# ggsave('test.pdf', p, w = 16, h = 8) 
+	ggsave(fs::path('pdfs', 'Suppl_FigScanSensitivity.pdf'), p, w = 16, h = 8)
+```

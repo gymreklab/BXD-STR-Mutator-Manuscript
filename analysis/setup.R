@@ -6,7 +6,7 @@ data_dir = '../data/'
 # Snorlax source: /gymreklab-tscc/mikhail/072321_bxd_mutator_paper/data/denovo_info/denovo_ri_gts_hom.tsv
 # Generated from:  /gymreklab-tscc/mikhail/072321_bxd_mutator_paper/workflows/5_prep_denovo_list/2_calc_delta_fou.R
 # Script now at scripts/2_calc_delta_fou.R 
-denovo_strs = read_tsv(path(data_dir, 'denovo_info/denovo_ri_gts_hom.tsv'), 
+denovo_strs = read_tsv(fs::path(data_dir, 'denovo_info/denovo_ri_gts_hom.tsv'), 
   col_types = cols(
     chr         = col_character(),
     pos         = 'i',
@@ -26,15 +26,15 @@ denovo_strs = read_tsv(path(data_dir, 'denovo_info/denovo_ri_gts_hom.tsv'),
 # format and filter duplicate sample BXD194
 denovo_strs = denovo_strs %>% 
   mutate(RN_T = RN_A + RN_B) %>%
-  rename(founder_rn = fou_rn) %>%
-  filter(strain != 'BXD194')
+  dplyr::rename(founder_rn = fou_rn) %>%
+ filter(strain != 'BXD194')
 
 # Output mutations list to a file
 write.csv(denovo_strs, file='../outs/denovo_strs_filtered.csv')
 
 ######### Load strain info ##########
 # load strain info
-strain_info = read_tsv(path(data_dir, 'bxd_strain_names_plus.tsv'),
+strain_info = read_tsv(fs::path(data_dir, 'bxd_strain_names_plus.tsv'),
   col_types = cols(
   long_name      = 'c',
   short_name     = 'c',
@@ -55,7 +55,7 @@ strain_info = strain_info %>% select(!c(batch, note, type))
 # get list of strains for which sequencing data is available (either have strain in snp vcf or bams for str genotyping)
 seqed_strains = list(snp = 'snp_strain_list', 
                      str = 'str_strain_list') %>%
-  map_df(~read_tsv(path(data_dir, .x), 
+  map_df(~read_tsv(fs::path(data_dir, .x), 
                    col_names = 'short_name', 
                    col_types = cols('c')), .id = 'seq_data') %>%
   mutate(is_seq = TRUE) %>%
@@ -120,7 +120,14 @@ write_csv(motif_info, '../outs/motif_info.csv')
 
 # load qtl2 formatted objects
 # genotype probabilities, physical map and strain kinship
-snp_probs   = readRDS(path(data_dir, 'qtl_data/probs.rds'))
-snp_pmap    = readRDS(path(data_dir, 'qtl_data/pmap.rds'))
-snp_kinship = readRDS(path(data_dir, 'qtl_data/kinship.rds'))
+snp_probs   = readRDS(fs::path(data_dir, 'qtl_data/probs.rds'))
+snp_pmap    = readRDS(fs::path(data_dir, 'qtl_data/pmap.rds'))
+snp_kinship = readRDS(fs::path(data_dir, 'qtl_data/kinship.rds'))
 
+# Write qtl_data to a file
+qtl_data = list(
+  snp_probs   = snp_probs, 
+  snp_pmap    = snp_pmap, 
+  snp_kinship = snp_kinship)
+
+saveRDS(qtl_data, fs::path('../outs/qtl_data.rds'))
