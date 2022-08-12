@@ -72,6 +72,8 @@ h6 {font-size: 0.75em}
 		'delta (RU) contr'   = 'contract_delta_ru',
 		'% expanded'         = 'proportion_expanded'
 	)
+	
+	FINALML = '4' # final motif length. either "4" (tetranucs only) or "all" (all motifs)
 ```
 
 
@@ -87,7 +89,15 @@ h6 {font-size: 0.75em}
 	left_join(motif_info %>% select(chr, pos, end, motif_len), by = c('chr', 'pos', 'end'))
 	strain_info = strain_info %>%
 	  mutate(off_epoch = recode(off_epoch, epoch_1a = 'epoch_1', epoch_1b = 'epoch_1', epoch_1c = 'epoch_1')) %>%
-	  mutate(gen_inbreeding = ifelse(bxd_id == 'BXD029', 158, gen_inbreeding))
+	  mutate(gen_inbreeding = ifelse(bxd_id == 'BXD029', 158, gen_inbreeding)) %>%
+	  mutate(epoch_1 = as.numeric(off_epoch=="epoch_1")) %>%
+	  mutate(epoch_2 = as.numeric(off_epoch=="epoch_2")) %>%
+	  mutate(epoch_3a = as.numeric(off_epoch=="epoch_3a")) %>%
+	  mutate(epoch_3b = as.numeric(off_epoch=="epoch_3b")) %>%
+	  mutate(epoch_4 = as.numeric(off_epoch=="epoch_4")) %>%
+	  mutate(epoch_5 = as.numeric(off_epoch=="epoch_5")) %>%
+	  mutate(epoch_6 = as.numeric(off_epoch=="epoch_6")) %>%
+	  mutate(epoch_7 = as.numeric(off_epoch=="epoch_7"))
 	num_mut = nrow(denovo_strs %>% distinct(chr, pos, end))
   print(paste("Num mutations:", num_mut))
 ```
@@ -120,11 +130,6 @@ h6 {font-size: 0.75em}
 # GW scan all phenotypes with loc/strain filtering
 
 #. min_pts_per_phe == 10, max_denovo_strains_per_loc == 10
-#. Include *all* motif lengths for the GW scan. 
-#. TODO: should we do only tetra?
-#. TODO: epoch as a covariate?
-#. TODO: num generations maybe doesn't need to be a covariate for % expanded and mutation size?
-#. TODO: check updated gen inbreeding info
 
 ```{r fig.width = 16, fig.height = 8, fig.align = 'center', cache = TRUE, eval = TRUE}
 		# run QTL mapping using SNP founder states and final calculated phenotype values
@@ -137,7 +142,7 @@ h6 {font-size: 0.75em}
 		  print(pt)
 			# subset phenotype values
 		  this_phenos = all_phenos %>%
-		    filter(min_pts_per_phe == 10, max_denovo_strains_per_loc == 10, motif_len == 'all') %>%
+		    filter(min_pts_per_phe == 10, max_denovo_strains_per_loc == 10, motif_len == FINALML) %>%
 		    filter(metric == pt) %>%
 		    filter(strain %in% strains) %>%
 		  	select(strain, pheno) %>% 
@@ -148,10 +153,19 @@ h6 {font-size: 0.75em}
 			
 			this_probs = qtl_data$snp_probs[pheno_strains,]
 			this_kinship = qtl_data$snp_kinship
-			this_covar = strain_info %>% 
-				select(bxd_id, gen_inbreeding) %>% 
-				filter(bxd_id %in% pheno_strains) %>%
+			
+			# % de novo -> use gen inbreeding
+			# all others -> no covariates
+			if (pt == '% denovo') {
+			 this_covar = strain_info %>% 
+			   #filter(off_epoch != "epoch_7") %>% # problematic gen inbreeding for epoch 7. need to adjust TODO
+				  select(bxd_id, gen_inbreeding) %>%
+				  filter(bxd_id %in% pheno_strains) %>%
 				column_to_rownames(var = 'bxd_id') %>% as.matrix
+			} else {
+			 this_covar = NULL
+			}
+			
 			# run qtl analysis
 			qtl_res = scan1(genoprobs = this_probs, 
 							pheno = this_phenos,
@@ -380,8 +394,6 @@ perc_expand_final_qtl = all_phenos %>%
 
 epoch3b has the most power to resolve association, but likely present in all strains
 
-#. TODO: this is also only looking at motif_len == 4
-
 ```{r echo=TRUE, fig.width = 16, fig.height = 8, fig.align = 'center', cache = TRUE, eval = TRUE}
 # run QTL mapping separately for different epochs
 epoch_grps = strain_info %>%
@@ -403,7 +415,7 @@ perc_expand_by_epoch_final = epoch_grps %>%
 				  filter(metric == '% expanded') %>%
 					filter(min_pts_per_phe == 10, 
 						   max_denovo_strains_per_loc == 10,
-						   motif_len == '4') %>%
+						   motif_len == FINALML) %>%
 					filter(strain %in% strains) %>%
 					select(strain, pheno) %>% 
 					column_to_rownames(var = 'strain') %>% as.matrix
@@ -526,7 +538,7 @@ ggsave(path('pdfs/', 'Fig2_SignalByFounder.pdf'), p, w = 16, h = 8)
 p = perc_exp_byhap %>%
   mutate(off_epoch = str_replace(off_epoch, 'epoch_', '')) %>%
   ggplot(aes(off_epoch, perc_expand, color = fou_gt)) +
-  geom_quasirandom(dodge.width = 0.9, width=0.2, groupOnX = TRUE) +
+  geom_quasirandom(dodge.width = 0.9, width=0.3, groupOnX = TRUE) +
   geom_boxplot(
 					 fill = 'white', alpha=0, 
 					 width = 0.3, outlier.shape = NA,
