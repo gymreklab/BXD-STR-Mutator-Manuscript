@@ -120,7 +120,11 @@ h6 {font-size: 0.75em}
 # GW scan all phenotypes with loc/strain filtering
 
 #. min_pts_per_phe == 10, max_denovo_strains_per_loc == 10
-#. Include *all* motif lengths for the GW scan
+#. Include *all* motif lengths for the GW scan. 
+#. TODO: should we do only tetra?
+#. TODO: epoch as a covariate?
+#. TODO: num generations maybe doesn't need to be a covariate for % expanded and mutation size?
+#. TODO: check updated gen inbreeding info
 
 ```{r fig.width = 16, fig.height = 8, fig.align = 'center', cache = TRUE, eval = TRUE}
 		# run QTL mapping using SNP founder states and final calculated phenotype values
@@ -165,7 +169,7 @@ h6 {font-size: 0.75em}
 		})
 		names(final_phenos_qtl) = names(phenos)
 		# make tidy
-		qtl_res = map_df(final_phenos_qtl, function(.x) {
+		final_qtl_res = map_df(final_phenos_qtl, function(.x) {
 			as.data.frame(.x$qtl_res) %>%
 				rownames_to_column(var = 'marker') %>%
 				as_tibble %>%
@@ -176,7 +180,7 @@ h6 {font-size: 0.75em}
 		}, .id = 'metric')
 		
 		# Plot QTL signal for all phenotypes
-		p = qtl_res %>%
+		p = final_qtl_res %>%
 		arrange(match(metric, names(phenos))) %>%
 		mutate(delta_dir = if_else(str_detect(metric, ' (expan|contr)$'),
 								   str_replace(metric, '.* (expan|contr)$', '\\1'), 
@@ -225,6 +229,7 @@ h6 {font-size: 0.75em}
 #. Robust to filtering conditions and using STRs with different motif lengths
 #. Difference by `max_denovo_strains_per_loc`
 #. Small difference by `min_pts_per_phe`
+
 ```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = FALSE, eval = TRUE, warning = FALSE, message = FALSE}
 chroms = c('13')
 # set strains
@@ -340,7 +345,6 @@ perc_expand_final_qtl = all_phenos %>%
 	ggsave(fs::path('pdfs', 'Suppl_FigSensitivityScan.pdf'), p, w = 16, h = 16)
 ```
 
-
 # Visualize %expanded by motif length (no filtering)
 
 ```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
@@ -371,3 +375,177 @@ perc_expand_final_qtl = all_phenos %>%
 	p
 	ggsave(fs::path('pdfs', 'Suppl_FigPercExpandedDistribution.pdf'), p, w = 6, h = 4)
 ```
+
+# Visualize QTL signal by epoch
+
+epoch3b has the most power to resolve association, but likely present in all strains
+
+#. TODO: this is also only looking at motif_len == 4
+
+```{r echo=TRUE, fig.width = 16, fig.height = 8, fig.align = 'center', cache = TRUE, eval = TRUE}
+# run QTL mapping separately for different epochs
+epoch_grps = strain_info %>%
+		select(strain = bxd_id, off_epoch) %>%
+		mutate(off_epoch = str_replace(off_epoch, 'epoch_', '')) %>%
+		filter(off_epoch != 'founder') %>%
+		mutate(epoch_grp = if_else(off_epoch %in% 4:7, '4-7', off_epoch))
+# add the 2+3a group
+epoch_grps = epoch_grps %>%
+		bind_rows(epoch_grps %>% filter(epoch_grp %in% c('2', '3b')) %>% mutate(epoch_grp = '2,3b')) %>%
+		bind_rows(epoch_grps %>% mutate(epoch_grp = 'all'))
+	
+perc_expand_by_epoch_final = epoch_grps %>%
+			split(.$epoch_grp) %>%
+			map('strain') %>%
+			map_df(function(strains) {
+				# transform the 
+				this_phenos = all_phenos %>%
+				  filter(metric == '% expanded') %>%
+					filter(min_pts_per_phe == 10, 
+						   max_denovo_strains_per_loc == 10,
+						   motif_len == '4') %>%
+					filter(strain %in% strains) %>%
+					select(strain, pheno) %>% 
+					column_to_rownames(var = 'strain') %>% as.matrix
+				# get strains for which we actually have a phenotype
+				pheno_strains = row.names(this_phenos)
+				if (length(pheno_strains) < 5) return(NULL)
+				# subset snp probabilities and kinship matrices
+				this_probs = qtl_data$snp_probs[pheno_strains,]
+				this_kinship = qtl_data$snp_kinship[]
+				this_covar = strain_info %>% 
+					select(bxd_id, gen_inbreeding) %>% 
+					filter(bxd_id %in% pheno_strains) %>%
+					column_to_rownames(var = 'bxd_id') %>% as.matrix
+				# run qtl analysis
+				qtl_res = scan1(genoprobs = this_probs, 
+								pheno = this_phenos,
+								kinship = this_kinship,
+								addcovar = this_covar
+				)
+				perm_res = scan1perm(genoprobs = this_probs, 
+									 pheno = this_phenos,
+									 kinship = this_kinship,
+									 addcovar = this_covar,
+									 n_perm = n_permute
+				)
+				# combine
+				qtl_res = as.data.frame(qtl_res) %>%
+					rownames_to_column(var = 'marker') %>%
+					as_tibble %>%
+					rename(LOD = pheno) %>%
+					mutate(lod_thresh = quantile(perm_res[,'pheno'], probs = 1-a_thresh, names = FALSE)) %>%
+					# left_join(snp_phys_map %>% select(marker, chr, pos, end), by = 'marker')
+					separate('marker', c('chr', 'pos', 'end'), convert = TRUE)
+				# output
+				return(qtl_res)
+			}, .id = 'epoch_grp')
+
+	p = perc_expand_by_epoch_final %>%
+		mutate(epoch_grp = fct_relevel(epoch_grp, c('all', '1', '2', '3a', '3b', '4-7', '2,3b'))) %>%
+		filter(epoch_grp != '2,3b') %>%
+		mutate(chr = fct_relevel(chr, str_sort(unique(chr), numeric = TRUE))) %>%
+		mutate(across(c(pos, end), ~.x/1e6)) %>%
+		ggplot(aes(pos, LOD, color = epoch_grp)) + 
+		geom_step() +
+		geom_hline(data = ~.x %>% distinct(epoch_grp, chr, lod_thresh),
+				   aes(yintercept = lod_thresh), linetype = 'dashed') + 
+		facet_grid(epoch_grp~chr, scales = 'free_x', switch = 'x') + 
+		scale_x_continuous(breaks = scales::breaks_pretty(n = 2), 
+						   guide = guide_axis(angle = 60)) +
+		scale_color_brewer(palette = 'Dark2') + 
+		# coord_cartesian(ylim = c(0, 4)) +
+		theme_half_open() +
+		theme(
+			panel.spacing.x = unit(0, 'pt'),
+			axis.title.x = element_blank(),
+			strip.placement = 'outside',
+			strip.text.y = element_text(angle = 0),
+			panel.border = element_rect(color = 'gray70'),
+			axis.text.x = element_blank(),
+			axis.ticks.x = element_blank(),
+			legend.position = 'none'
+		)
+	p
+	ggsave(path('pdfs/', 'Suppl_FigEpochScan.pdf'), p, w = 16, h = 8)
+```
+
+# Plot founder gt at locus vs. expansion propensity
+```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+# founder genotypes at max LOD marker for %expanded 
+fou_gt_at_peak = maxmarg(qtl_data$snp_probs[,'13'], minprob = 0.5) %>% 
+		.[[1]] %>%
+		as.data.frame %>%
+		rownames_to_column(var = 'strain') %>%
+		pivot_longer(cols = !strain, names_to = 'marker', values_to = 'fou_gt') %>%
+		semi_join(final_qtl_res %>% 
+				filter(metric == '% expanded') %>%
+				unite('marker', c('chr', 'pos', 'end')) %>%
+				slice_max(LOD, n = 1), by = 'marker') %>%
+		mutate(fou_gt = recode(fou_gt, `1` = 'B', `2` = 'D'),
+			   fou_gt = replace_na(fou_gt, 'miss'))
+
+# Get perc expanded and hap labels for each strain
+perc_exp_byhap = all_phenos %>% 
+  filter(min_pts_per_phe == 10, max_denovo_strains_per_loc == 10, motif_len == 'all') %>%
+		    filter(metric == '% expanded') %>%
+		    filter(strain %in% strains) %>%
+		left_join(strain_info %>% 
+				  mutate(off_epoch = recode(off_epoch, epoch_1b = 'epoch_1a', epoch_1c = 'epoch_1a')) %>%
+				  select(strain = bxd_id, off_epoch), by = 'strain') %>%
+		rename(perc_expand = pheno) %>%
+		left_join(fou_gt_at_peak %>% select(!marker), by = 'strain') %>%
+		arrange(desc(perc_expand)) %>%
+		select(strain, perc_expand, off_epoch, fou_gt, n)
+
+founder_colors = c(
+		'B' = 'red', 
+		'D' = 'blue'
+		)
+p = perc_exp_byhap %>%
+  ggplot(aes(fou_gt, perc_expand, color = fou_gt)) +
+  geom_quasirandom(dodge.width = 0.1, width=0.2, groupOnX = TRUE) +
+  geom_boxplot(aes(group = fou_gt), 
+					 fill = 'white', alpha=0, 
+					 width = 0.2, outlier.shape = NA,
+					 position = position_dodge(width = 0.3)) +
+  scale_color_manual(
+			values = founder_colors,
+			guide = guide_legend(title = NULL, nrow = 1)
+		) + 
+  theme_half_open() +
+  ylab("Expansion propensity")
+p
+ggsave(path('pdfs/', 'Fig2_SignalByFounder.pdf'), p, w = 16, h = 8)
+
+```
+
+# Plot founder gt at locus vs. expansion propensity by epoch
+```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+
+p = perc_exp_byhap %>%
+  mutate(off_epoch = str_replace(off_epoch, 'epoch_', '')) %>%
+  ggplot(aes(off_epoch, perc_expand, color = fou_gt)) +
+  geom_quasirandom(dodge.width = 0.9, width=0.2, groupOnX = TRUE) +
+  geom_boxplot(
+					 fill = 'white', alpha=0, 
+					 width = 0.3, outlier.shape = NA,
+					 position = position_dodge(width = 0.5)) +
+  scale_color_manual(
+			values = founder_colors,
+			guide = guide_legend(title = NULL, nrow = 1)
+		) + 
+  theme_half_open() +
+  theme(
+			  # legend.position = c(1, 1),
+			  # legend.justification = c(1, 1),
+			  # legend.text = element_text(size = 8)
+			  legend.position = 'none'
+		) +
+  ylab("Expansion propensity")
+p
+ggsave(path('pdfs/', 'Fig2_SignalByFounderByEpoch.pdf'), p, w = 16, h = 8)
+
+```
+
+# Determine the QTL confidence interval and plot genes - TODO
