@@ -2,6 +2,9 @@ library(fs)
 library(tidyverse)
 data_dir = '../data/'
 
+#### Note see /gymreklab-tscc/mikhail/072321_bxd_mutator_paper/BXDstrs_package/BXDstrs/data/
+#### for full datasets
+
 ######### Load new mutations list ##########
 # Snorlax source: /gymreklab-tscc/mikhail/072321_bxd_mutator_paper/data/denovo_info/denovo_ri_gts_hom.tsv
 # Generated from:  /gymreklab-tscc/mikhail/072321_bxd_mutator_paper/workflows/5_prep_denovo_list/2_calc_delta_fou.R

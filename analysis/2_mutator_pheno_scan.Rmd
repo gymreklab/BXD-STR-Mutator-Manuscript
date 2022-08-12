@@ -89,15 +89,13 @@ h6 {font-size: 0.75em}
 	left_join(motif_info %>% select(chr, pos, end, motif_len), by = c('chr', 'pos', 'end'))
 	strain_info = strain_info %>%
 	  mutate(off_epoch = recode(off_epoch, epoch_1a = 'epoch_1', epoch_1b = 'epoch_1', epoch_1c = 'epoch_1')) %>%
-	  mutate(gen_inbreeding = ifelse(bxd_id == 'BXD029', 158, gen_inbreeding)) %>%
-	  mutate(epoch_1 = as.numeric(off_epoch=="epoch_1")) %>%
-	  mutate(epoch_2 = as.numeric(off_epoch=="epoch_2")) %>%
-	  mutate(epoch_3a = as.numeric(off_epoch=="epoch_3a")) %>%
-	  mutate(epoch_3b = as.numeric(off_epoch=="epoch_3b")) %>%
-	  mutate(epoch_4 = as.numeric(off_epoch=="epoch_4")) %>%
-	  mutate(epoch_5 = as.numeric(off_epoch=="epoch_5")) %>%
-	  mutate(epoch_6 = as.numeric(off_epoch=="epoch_6")) %>%
-	  mutate(epoch_7 = as.numeric(off_epoch=="epoch_7"))
+	  mutate(gen_inbreeding = if_else(bxd_id == 'BXD221', 3, gen_inbreeding)) %>%
+	  mutate(gen_inbreeding = if_else(bxd_id == 'BXD222', 3, gen_inbreeding)) %>%
+	  mutate(gen_inbreeding = if_else(bxd_id == 'BXD223', 4, gen_inbreeding)) %>%
+	  mutate(gen_inbreeding = if_else(bxd_id == 'BXD224', 4, gen_inbreeding)) %>%
+	  mutate(gen_inbreeding = if_else(bxd_id == 'BXD225', 3, gen_inbreeding)) %>%
+	  mutate(gen_inbreeding = if_else(bxd_id == 'BXD226', 3, gen_inbreeding)) %>%
+	  mutate(gen_inbreeding = if_else(bxd_id == 'BXD227', 2, gen_inbreeding)) 
 	num_mut = nrow(denovo_strs %>% distinct(chr, pos, end))
   print(paste("Num mutations:", num_mut))
 ```
