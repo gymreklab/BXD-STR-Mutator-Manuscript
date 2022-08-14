@@ -80,8 +80,6 @@ h6 {font-size: 0.75em}
 						off_epoch = str_replace(off_epoch, 'epoch_', '')) %>%
 			select(strain = bxd_id, off_epoch, gen_inbreeding), by = 'strain') %>%
 		  mutate(perc = n*100/n_loci) %>%
-		  # fix likely typo in gen inbreeding
-		  mutate(gen_inbreeding = if_else(strain == 'BXD029', 158, gen_inbreeding)) %>%
 		  # replace missing with average
 		  group_by(off_epoch) %>%
 		  mutate(gen_inbreeding = replace_na(gen_inbreeding, median(gen_inbreeding, na.rm = TRUE))) %>%

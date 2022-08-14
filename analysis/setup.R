@@ -30,7 +30,7 @@ denovo_strs = read_tsv(fs::path(data_dir, 'denovo_info/denovo_ri_gts_hom.tsv'),
 denovo_strs = denovo_strs %>% 
   mutate(RN_T = RN_A + RN_B) %>%
   dplyr::rename(founder_rn = fou_rn) %>%
- filter(strain != 'BXD194')
+  filter(strain != 'BXD194')
 
 # Output mutations list to a file
 write.csv(denovo_strs, file='../outs/denovo_strs_filtered.csv')
@@ -67,7 +67,15 @@ seqed_strains = list(snp = 'snp_strain_list',
               values_from = is_seq, values_fill = list(is_seq = FALSE))
 strain_info = strain_info %>% 
   left_join(seqed_strains, by = 'short_name') %>%
-  mutate(across(matches('is_seq_'), ~replace_na(.x, FALSE)))
+  mutate(across(matches('is_seq_'), ~replace_na(.x, FALSE))) %>%
+  mutate(gen_inbreeding = ifelse(bxd_id == 'BXD029', 158, gen_inbreeding)) %>%
+  mutate(gen_inbreeding = ifelse(bxd_id == 'BXD221', 3, gen_inbreeding)) %>%
+  mutate(gen_inbreeding = ifelse(bxd_id == 'BXD222', 3, gen_inbreeding)) %>%
+  mutate(gen_inbreeding = ifelse(bxd_id == 'BXD223', 4, gen_inbreeding)) %>%
+  mutate(gen_inbreeding = ifelse(bxd_id == 'BXD224', 4, gen_inbreeding)) %>%
+  mutate(gen_inbreeding = ifelse(bxd_id == 'BXD225', 3, gen_inbreeding)) %>%
+  mutate(gen_inbreeding = ifelse(bxd_id == 'BXD226', 3, gen_inbreeding)) %>%
+  mutate(gen_inbreeding = ifelse(bxd_id == 'BXD227', 2, gen_inbreeding)) 
 write_csv(strain_info, '../outs/strain_info.csv')
 
 ######### Load genotype info ##########
