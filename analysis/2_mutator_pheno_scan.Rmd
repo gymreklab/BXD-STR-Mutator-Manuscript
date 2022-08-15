@@ -642,7 +642,7 @@ p = contradelta_exp_byhap %>%
 p
 ```
 
-# Determine the QTL confidence interval
+# Determine the QTL confidence interval - chr13 % expanded
 
 #. Confidence interval for the QTL determined by the 1.5 LOD drop method
 
@@ -680,12 +680,8 @@ p
 			legend.position = 'top'
 		)
 	p
-```
-
-# Get genes annotated in EMBL under the QTL
-
-```{r echo=FALSE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
-	# connect to Ensembl
+	
+		# connect to Ensembl
 	e102 = biomaRt::useEnsembl(
 		biomart = 'genes',
 		host = 'http://nov2020.archive.ensembl.org', 
@@ -715,6 +711,7 @@ p
 
 	# remove extra text from gene description
 	embl_genes = embl_genes %>%
-		mutate(gene_descr = str_replace(gene_descr, regex(' \\[Source.*\\]'), ''))
+		mutate(gene_descr = str_replace(description, regex(' \\[Source.*\\]'), ''))
+	print(embl_genes$external_gene_name)
 ```
 
