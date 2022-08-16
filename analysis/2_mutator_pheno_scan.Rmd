@@ -177,7 +177,7 @@ h6 {font-size: 0.75em}
 				# left_join(snp_phys_map %>% select(marker, chr, pos, end), by = 'marker')
 				separate('marker', c('chr', 'pos', 'end'), convert = TRUE)
 		}, .id = 'metric')
-		
+		write.csv('../outs/final_qtl_res.csv')
 		# Plot QTL signal for all phenotypes
 		p = final_qtl_res %>%
 		arrange(match(metric, names(phenos))) %>%
@@ -278,7 +278,8 @@ h6 {font-size: 0.75em}
 				# left_join(snp_phys_map %>% select(marker, chr, pos, end), by = 'marker')
 				separate('marker', c('chr', 'pos', 'end'), convert = TRUE)
 		}, .id = 'metric')
-		
+		write.csv('../outs/final_qtl_res_tetra.csv')
+
 		# Plot QTL signal for all phenotypes
 		p = final_qtl_res_tetra %>%
 		arrange(match(metric, names(phenos))) %>%
@@ -538,7 +539,7 @@ perc_expand_by_epoch_final = epoch_grps %>%
 				# output
 				return(qtl_res)
 			}, .id = 'epoch_grp')
-
+  write.csv('../outs/perc_expand_by_epoch_final.csv')
 	p = perc_expand_by_epoch_final %>%
 		mutate(epoch_grp = fct_relevel(epoch_grp, c('all', '1', '2', '3a', '3b', '4-7', '2,3b'))) %>%
 		filter(epoch_grp != '2,3b') %>%
