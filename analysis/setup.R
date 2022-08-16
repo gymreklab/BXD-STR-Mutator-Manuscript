@@ -75,7 +75,8 @@ strain_info = strain_info %>%
   mutate(gen_inbreeding = ifelse(bxd_id == 'BXD224', 4, gen_inbreeding)) %>%
   mutate(gen_inbreeding = ifelse(bxd_id == 'BXD225', 3, gen_inbreeding)) %>%
   mutate(gen_inbreeding = ifelse(bxd_id == 'BXD226', 3, gen_inbreeding)) %>%
-  mutate(gen_inbreeding = ifelse(bxd_id == 'BXD227', 2, gen_inbreeding)) 
+  mutate(gen_inbreeding = ifelse(bxd_id == 'BXD227', 2, gen_inbreeding)) %>%
+  mutate(gen_inbreeding = ifelse(bxd_id == 'BXD073', 38, gen_inbreeding))
 write_csv(strain_info, '../outs/strain_info.csv')
 
 ######### Load genotype info ##########
