@@ -2,8 +2,6 @@
 
 # Compute other stats on BXD files
 
-# TODO: check strain list in genotypes files (should be 152)
-
 ############## Reference TR set #################
 REFSTRS=/gymreklab-tscc/mikhail/090520_unified_workflow/data/ref/str_regions.bed
 MOTIFINFO=/gymreklab-tscc/mikhail/090520_unified_workflow/data/ref/motif_comp/str_regions_mm10_filt_w_hom.tsv.gz
