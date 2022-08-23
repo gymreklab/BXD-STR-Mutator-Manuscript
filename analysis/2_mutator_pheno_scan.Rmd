@@ -116,6 +116,10 @@ h6 {font-size: 0.75em}
 			}, .id = 'min_pts_per_phe')
 		}, .id='motif_len')
 	}, .id='metric')
+	
+	pheno_vals = all_phenos %>% 
+	  filter(min_pts_per_phe == 10, max_denovo_strains_per_loc == 10, motif_len == '4') %>%
+	  select(strain, motif_len, pheno, n, metric)
 ```
 
 
