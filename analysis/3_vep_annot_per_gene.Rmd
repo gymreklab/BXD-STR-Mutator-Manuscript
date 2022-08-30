@@ -1,0 +1,1175 @@
+---
+title: "3_vep_annot_per_gene"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = FALSE, eval = TRUE, message = FALSE, warning = FALSE}
+	# options
+	knitr::opts_chunk$set(echo = TRUE)
+	options(stringsAsFactors = FALSE, dplyr.summarise.inform = FALSE)
+
+	# libraries
+	library(tidyverse)
+	library(cowplot)
+	library(fs)
+	library(qtl2)
+	library(ggbeeswarm)
+	library(ggforce)
+  library(flextable)
+	library(ggrepel)
+	library(DT)
+	library(ggh4x)
+	
+```
+
+# QTL region for tetra
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+#ci_chr = '13'; ci_lo = 87.58; ci_hi = 93.42; ci_mid = 90.44
+# qtl_ci = tibble('metric' = '% expanded', 'ci_lo' = ci_lo, 'pos' = ci_mid, 'ci_hi' = ci_hi)
+qtl_ci = read_csv('../outs/qtl_ci_tetra.csv')
+ci_lo = as.double(qtl_ci['ci_lo']); ci_hi = as.double(qtl_ci['ci_hi'])
+# original CI
+# ci_chr = '13'; ci_lo = 83.78112; ci_hi = 93.41913; ci_mid = 90.4
+```
+
+```{r echo=FALSE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# connect to Ensembl
+	e102 = biomaRt::useEnsembl(
+		biomart = 'genes',
+		host = 'http://nov2020.archive.ensembl.org', 
+		dataset = 'mmusculus_gene_ensembl',
+		version = 102, verbose = FALSE)
+
+	# get genes
+	attr_to_get = c(
+		gene_id    = "ensembl_gene_id",
+		gene_chr   = "chromosome_name",
+		gene_pos   = "start_position",
+		gene_end   = "end_position",
+		gene_name  = "external_gene_name",
+		gene_type  = "gene_biotype",
+		gene_descr = "description"
+	)
+
+	# run query
+	embl_genes = biomaRt::getBM(
+		attributes = attr_to_get,
+		filters = c('chromosome_name', 'start', 'end'), 
+		values = list('13', ci_lo*1e6, ci_hi*1e6), 
+		mart = e102) %>% as_tibble
+
+	# rename
+	embl_genes = embl_genes %>% rename(all_of(attr_to_get))
+
+	# remove extra text from gene description
+	embl_genes = embl_genes %>%
+		mutate(gene_descr = str_replace(gene_descr, regex(' \\[Source.*\\]'), ''))
+```
+# Look up transcript coordinates
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+  gene_info = embl_genes %>% filter(gene_type == 'protein_coding')
+
+    # get transcript information
+	attr_to_get = c(
+		gene_id   = "ensembl_gene_id",
+		gene_name = "external_gene_name",
+		gene_type = "gene_biotype",
+		chr       = "chromosome_name",
+		tx_id     = "ensembl_transcript_id_version",
+		tx_pos    = "transcript_start",
+		tx_end    = "transcript_end",
+		exon_id   = "ensembl_exon_id",
+		exon_pos  = "exon_chrom_start",
+		exon_end  = "exon_chrom_end",
+		tx_type   = "transcript_biotype",
+		cds_pos   = "genomic_coding_start",
+		cds_end   = "genomic_coding_end",
+		rank      = "rank"
+    )
+	tx_info = biomaRt::getBM(
+		attributes = attr_to_get,
+		# filters = c('chromosome_name', 'start', 'end'), 
+		# values = c(list(ci_chr), list(ci_lo*1e6), list(ci_hi*1e6)), 
+		filters = c('ensembl_gene_id'), 
+		values = c(list(gene_info %>% pull(gene_id))), 
+		mart = e102) %>% as_tibble
+
+    # rename columns
+    tx_info = tx_info %>% rename(all_of(attr_to_get))
+    tx_info = tx_info %>% mutate(chr = str_c('chr', chr))
+    
+	# convert position
+    tx_info = tx_info %>% mutate(across(matches('_(pos|end)$'), ~.x/1e6))
+
+	# query TSL for each trascript
+	attr_to_get = c(
+		tx_id = "ensembl_transcript_id_version",
+		tsl   = "transcript_tsl"
+    )
+	tx_supp = biomaRt::getBM(
+		attributes = attr_to_get,
+		filters = c('ensembl_transcript_id_version'), 
+		values = c(list(tx_info %>% distinct(tx_id) %>% pull(tx_id))), 
+		mart = e102) %>% as_tibble
+
+	# format tsl column
+	tx_supp = tx_supp %>% 
+		rename(all_of(attr_to_get)) %>%
+		mutate(tsl = str_replace(tsl, ' \\(.*\\)$', '') %>% if_else(. == '', NA_character_, .)) %>%
+		arrange(tsl) %>%
+		mutate(tsl = fct_inorder(tsl))
+
+	# join tx support levels back to tx_info
+	tx_info = tx_info %>% left_join(tx_supp, by = 'tx_id')
+
+	# determine canonical transcript
+	canon_lab = tx_info %>%
+		mutate(tx_len = tx_end - tx_pos) %>%
+		distinct(gene_name, tx_id, tx_len, tsl) %>%
+		arrange(tsl, desc(tx_len)) %>%
+		distinct(gene_name, .keep_all = TRUE) %>%
+		mutate(is_canon = TRUE)
+
+	# join canonical label
+	tx_info = tx_info %>% 
+		left_join(canon_lab %>% select(gene_name, tx_id, is_canon), by = c('gene_name', 'tx_id')) %>%
+		mutate(is_canon = replace_na(is_canon, FALSE))
+```
+
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# define columns
+	vep_cols = c('Uploaded_variation', 'Location', 'Allele', 'Gene', 'Feature', 'Feature_type', 'Consequence', 'cDNA_position', 'CDS_position', 'Protein_position', 'Amino_acids', 'Codons', 'Existing_variation', 'IMPACT', 'DISTANCE', 'STRAND', 'FLAGS', 'VARIANT_CLASS', 'SYMBOL', 'SYMBOL_SOURCE', 'HGNC_ID', 'BIOTYPE', 'CANONICAL', 'MANE_SELECT', 'MANE_PLUS_CLINICAL', 'TSL', 'APPRIS', 'CCDS', 'ENSP', 'SWISSPROT', 'TREMBL', 'UNIPARC', 'UNIPROT_ISOFORM', 'GENE_PHENO', 'SIFT', 'EXON', 'INTRON', 'DOMAINS', 'miRNA', 'AF', 'AFR_AF', 'AMR_AF', 'EAS_AF', 'EUR_AF', 'SAS_AF', 'AA_AF', 'EA_AF', 'gnomAD_AF', 'gnomAD_AFR_AF', 'gnomAD_AMR_AF', 'gnomAD_ASJ_AF', 'gnomAD_EAS_AF', 'gnomAD_FIN_AF', 'gnomAD_NFE_AF', 'gnomAD_OTH_AF', 'gnomAD_SAS_AF', 'MAX_AF', 'MAX_AF_POPS', 'CLIN_SIG', 'SOMATIC', 'PHENO', 'PUBMED', 'MOTIF_NAME', 'MOTIF_POS', 'HIGH_INF_POS', 'MOTIF_SCORE_CHANGE', 'TRANSCRIPTION_FACTORS')
+
+	# read VEP annotations for strs and snps/indels
+	vep_annot = map(list(
+		str = '../data/vep/bxd_strs.annot.annot.tsv',
+		# sv  = '../data/vep/bxd_svs.annot.annot.tsv',
+		sv  = '../data/vep/vep_out.tsv',
+		snp = '../data/vep/bxd_snp_indel.annot.annot.tsv'
+	), ~read_tsv(.x, comment = '#', col_names = vep_cols, col_types = cols(.default = 'c')))
+
+	# now svs have a chr,pos,end,sv_type id 
+	vep_annot$sv = vep_annot$sv %>%
+		separate('Uploaded_variation', c('chr', 'pos', 'end', 'sv_type'), sep = '_', convert = TRUE, fill = 'right') %>%
+		unite('Uploaded_variation', c('chr', 'pos', 'end'))
+
+	# save a raw version of vep_annot with extra info
+	raw_vep_annot = vep_annot %>% 
+		map_df(~.x, .id = 'loc_type') %>%
+		separate('Uploaded_variation', c('chr', 'pos', 'end'), sep = '_', convert = TRUE, fill = 'right')
+ 
+	# combine
+	col_keep = c('Uploaded_variation', 'Allele', 'Gene', 'Feature', 'Feature_type', 'Consequence', 
+				 'IMPACT', 'STRAND', 'VARIANT_CLASS', 'SYMBOL', 'BIOTYPE', 'Amino_acids', 'Existing_variation', 'sv_type')
+	vep_annot = vep_annot %>% map_df(~.x %>% select(any_of(col_keep)), .id = 'loc_type')
+
+    # split out the position and reference allele
+	vep_annot = vep_annot %>% 
+		separate('Uploaded_variation', c('chr', 'pos', 'end'), sep = '_', convert = TRUE, fill = 'right')
+	vep_annot = vep_annot %>% mutate(end = if_else(is.na(end), pos, end))
+
+    # fix missing values
+	vep_annot = vep_annot %>%
+		mutate(across(!c(loc_type, chr, pos, end, sv_type), ~if_else(.x == '-', NA_character_, .x)))
+
+    # assign ordering to impacts
+    vep_annot = vep_annot %>% mutate(IMPACT = fct_relevel(IMPACT, c('HIGH', 'MODERATE', 'LOW', 'MODIFIER')))
+
+	# filter out loci which don't fit in window
+	vep_annot = vep_annot %>%
+		filter(pos >= ci_lo*1e6 & end <= ci_hi*1e6)
+```
+
+# Filter for variants in genes
+
+#. Remove all intergenic variants (as labelled by VEP)
+	- Should be redundant with overlapping with protein coding genes, but more efficient to filter immediately
+#. Subset to variants overlapping protein coding genes in the region
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+    # "amino acids", "Allele" and "existing variation" are sources of duplication, STRAND not particularly interesting
+    # NOTE: can explore the specific effects of different alleles of same variant at a later stage
+    # for now as long as multiple different impacts, we will keep each
+	redux_vep_annot = vep_annot %>%
+		select(!c(STRAND, Amino_acids, Existing_variation, Allele)) %>%
+		distinct
+
+	# filter out intergenic variants
+	redux_vep_annot = redux_vep_annot %>% filter(Consequence != 'intergenic_variant')
+
+	# split into a list to make filtering easier
+	redux_vep_annot_lst = redux_vep_annot %>% split(.$Feature_type)
+ 
+	### TRANSCRIPTS ###
+	genes_of_int = gene_info %>% pull(gene_name) %>% unique
+		redux_vep_annot_lst$Transcript = redux_vep_annot_lst$Transcript %>% filter(SYMBOL %in% genes_of_int)
+		
+	### REGULATORY FEATURES ###
+
+	# first use bedtools window to find which regulatory variants are near genes
+	tmp_files = list(variants = 'tmp_vars.bed', genes = 'tmp_genes.bed')
+	bed_regions = list(
+		variants = redux_vep_annot_lst$RegulatoryFeature %>%
+			distinct(chr, pos, end, loc_type) %>% 
+			relocate(loc_type, .after = -1) %>% 
+			arrange(chr, pos, end),
+		genes = gene_info %>%
+			mutate(chr = 'chr13') %>%
+			select(chr, gene_pos, gene_end, gene_name) %>%
+			arrange(chr, gene_pos, gene_end)
+	)
+	walk2(bed_regions, tmp_files, ~write_tsv(.x, .y, col_names = FALSE))
+	olap_vars = read_tsv(pipe(sprintf('bedtools window -w 1000 -a %s -b %s', tmp_files$genes, tmp_files$variants)),
+		 col_names = c('gene_chr', 'gene_pos', 'gene_end', 'gene_name', 'chr', 'pos', 'end', 'loc_type'), 
+		 col_types = cols(gene_chr = 'c', gene_pos = 'i', gene_end = 'i', gene_name = 'c', chr = 'c', pos = 'i', end = 'i', loc_type = 'c')
+	)
+	file_delete(tmp_files %>% unlist)
+	redux_vep_annot_lst$RegulatoryFeature = redux_vep_annot_lst$RegulatoryFeature %>% 
+		semi_join(olap_vars, by = c('chr', 'pos', 'end', 'loc_type'))
+
+	# second use bedtools closest to find which gene each regulatory feature is closest too
+	tmp_files = list(reg_features = 'tmp_vars.bed', genes = 'tmp_genes.bed')
+	bed_regions = list(
+		reg_features = redux_vep_annot_lst$RegulatoryFeature %>%
+			distinct(chr, pos, end, loc_type, Feature) %>% 
+			relocate(loc_type, .after = -1) %>%
+			arrange(chr, pos, end),
+		genes = gene_info %>% 
+			mutate(chr = 'chr13') %>%
+			select(chr, gene_pos, gene_end, gene_name) %>%
+			arrange(chr, gene_pos, gene_end)
+	)
+	walk2(bed_regions, tmp_files, ~write_tsv(.x, .y, col_names = FALSE))
+	closest_gene = read_tsv(pipe(sprintf('bedtools closest -t "first" -d -a %s -b %s', tmp_files$reg_features, tmp_files$genes)),
+	     col_names = c('chr', 'pos', 'end', 'Feature', 'loc_type', 'gene_chr', 'gene_pos', 'gene_end', 'gene_name', 'dist'), 
+	     col_types = cols(chr = 'c', pos = 'i', end = 'i', Feature = 'c', loc_type = 'c', gene_chr = 'c', gene_pos = 'i', gene_end = 'i', gene_name = 'c', dist = 'i')
+	)
+    file_delete(tmp_files %>% unlist)
+	redux_vep_annot_lst$RegulatoryFeature = redux_vep_annot_lst$RegulatoryFeature %>%
+		left_join(closest_gene %>% select(chr, pos, end, Feature, loc_type, assig_gene_name = gene_name), 
+				  by = c('chr', 'pos', 'end', 'Feature', 'loc_type')) %>%
+		mutate(SYMBOL = if_else(is.na(SYMBOL), assig_gene_name, SYMBOL)) %>%
+		select(!assig_gene_name)
+
+	# recombined
+	redux_vep_annot = redux_vep_annot_lst %>% bind_rows
+   
+    # reorder columns and get rid of "Gene" column to avoid confusion with SYMBOL
+	redux_vep_annot = redux_vep_annot %>% 
+		select(loc_type, chr, pos, end, sv_type, SYMBOL, IMPACT, Feature_type, Feature, Consequence, VARIANT_CLASS, BIOTYPE) 
+
+	# define an id for each locus 
+	# svs are chr,pos,end,sv_type unlike snps and strs which are chr,pos,end
+	redux_vep_annot = redux_vep_annot %>%
+		mutate(loc_id = if_else(loc_type %in% c('str', 'snp'), 
+								str_c(chr, '_', pos, '_', end),
+								str_c(chr, '_', pos, '_', end, '_', sv_type))) %>%
+		relocate(loc_id, .after = 'sv_type')
+```
+
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	sv_data = readRDS('../data/vep/sv_data.rds')
+
+  min_sv_size = 50
+  # run the filter
+	redux_vep_annot = bind_rows(
+		redux_vep_annot %>% filter(loc_type != 'sv'),
+		redux_vep_annot %>% 
+			filter(loc_type == 'sv') %>%
+			semi_join(sv_data$locs_data %>% filter(sv_size > min_sv_size), by = c('chr', 'pos', 'end', 'sv_type'))
+	)
+```
+
+# Variant counts by predicted impact
+
+#. Filters: `filter1`
+#. Count top predicted impact per variant to account for one variant impacting one or multiple genes in different ways
+
+## All 
+
+```{r echo=TRUE, fig.width = 8, fig.height = 6, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# summary of number of loci for each kind of impact
+	redux_vep_annot %>% 
+		arrange(IMPACT) %>% # pull(IMPACT) %>% levels
+		# distinct(loc_type, chr, pos, end, .keep_all = TRUE) %>%
+		distinct(loc_type, loc_id, .keep_all = TRUE) %>%
+		count(loc_type, IMPACT, name = 'n_loci') %>% 
+		pivot_wider(id_cols = IMPACT, names_from = loc_type, values_from = n_loci, values_fill = list(snp = 0, str = 0)) %>%
+		arrange(desc(snp)) %>% 
+		arrange(IMPACT)
+```
+
+## Only protein coding BIOTYPE
+
+```{r echo=TRUE, fig.width = 8, fig.height = 6, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# summary of number of loci for each kind of impact
+	redux_vep_annot %>% 
+		filter(BIOTYPE == 'protein_coding') %>%
+		arrange(IMPACT) %>% # pull(IMPACT) %>% levels
+		# distinct(loc_type, chr, pos, end, .keep_all = TRUE) %>%
+		distinct(loc_type, loc_id, .keep_all = TRUE) %>%
+		count(loc_type, IMPACT, name = 'n_loci') %>% 
+		pivot_wider(id_cols = IMPACT, names_from = loc_type, values_from = n_loci, values_fill = list(snp = 0, str = 0)) %>%
+		arrange(desc(snp)) %>% 
+		arrange(IMPACT)
+```
+# Per gene impact summary
+
+#. Filters: `filter1`
+#. Count top predict impact per variant/gene
+
+## All
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	redux_vep_annot %>%
+		arrange(IMPACT) %>%
+		# distinct(loc_type, chr, pos, end, SYMBOL, .keep_all = TRUE) %>%
+		distinct(loc_type, loc_id, SYMBOL, .keep_all = TRUE) %>%
+		count(SYMBOL, IMPACT) %>%
+		pivot_wider(id_cols = SYMBOL, names_from = IMPACT, values_from = n) %>%
+		select(SYMBOL, HIGH, MODERATE, LOW, MODIFIER) %>%
+		arrange(desc(HIGH), desc(MODERATE)) # %>%
+		# flextable %>% theme_zebra
+```
+
+## Only protein coding BIOTYPE
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	redux_vep_annot %>% 
+		filter(BIOTYPE == 'protein_coding') %>%
+		arrange(IMPACT) %>%
+		# distinct(loc_type, chr, pos, end, SYMBOL, .keep_all = TRUE) %>%
+		distinct(loc_type, loc_id, SYMBOL, .keep_all = TRUE) %>%
+		count(SYMBOL, IMPACT) %>%
+		pivot_wider(id_cols = SYMBOL, names_from = IMPACT, values_from = n) %>%
+		select(SYMBOL, HIGH, MODERATE, LOW, MODIFIER) %>%
+		arrange(desc(HIGH), desc(MODERATE)) # %>%
+		# flextable %>% theme_zebra
+```
+# Feature_type and BIOTYPE summary
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# NOTE: vep_annot has NA Feature_types that the intergenic_variant
+	smry = redux_vep_annot %>% 
+		count(Feature_type, BIOTYPE) %>% 
+		arrange(desc(n))
+	smry %>% add_row(smry %>% summarise(n = sum(n)))
+```
+
+# Search criteria for candidate variants
+
+#. Variants with a high or moderate predicted impacts are most interesting
+#. Can consider low and modifier variants as long as specific consequence makes sense
+#. Variant needs to be associated with our phenotype
+#. Variant needs to have a large enough non-major allele count, otherwise assoc p-val might be due to leveraging
+
+# Pull genotypes for association testing with %expanded phenotype
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE, warning = FALSE}
+	# configure output directory
+	out_dir = '../data/vep/gts'; dir_create(out_dir)
+
+	# subset loci of interest
+	# NOTE: in newer version of the code we are querying a simplified version of SV genotypes instead of from raw vcf directly
+	loci_of_int = redux_vep_annot %>% distinct(loc_type, chr, pos, end, loc_id)
+	to_proc = list(
+		str = list(vcf = '../data/vep/bxd_strs.annot.vcf.gz',
+			   loci = loci_of_int %>% filter(loc_type == 'str'),
+			   loc_type = 'str'),
+		snp = list(vcf = '../data/vep/bxd_snp_indel.annot.vcf.gz',
+			   loci = loci_of_int %>% filter(loc_type == 'snp'),
+			   loc_type = 'snp')
+	)
+
+	# get genotypes for variants
+	loci_gts = map(to_proc, function(.x) {
+		# user out
+		print(sprintf('Processing: %s', .x$loc_type))
+
+		# write a temporary file
+		tmp_file = path(out_dir, str_c(.x$loc_type, '_loci'))
+		write_tsv(.x$loci %>% distinct(chr, pos, end), tmp_file, col_names = FALSE)
+
+		# run query
+		out_file = path(out_dir, str_c(.x$loc_type, '_gts.tsv')); redo = FALSE
+		if (!file_exists(out_file) | redo) {
+			if (.x$loc_type == 'str') {
+				cmd = sprintf("bcftools query -H -f '%%CHROM\t%%POS\t%%INFO/END[\t%%GT]\n' %s -R %s > %s", 
+						  .x$vcf,
+						  tmp_file,
+						  out_file)
+				print(cmd)
+			} else if (.x$loc_type == 'snp') {
+				cmd = sprintf("bcftools query -H -f '%%CHROM\t%%POS\t%%END[\t%%GT]\n' %s -R %s > %s", 
+						  .x$vcf,
+						  tmp_file,
+						  out_file)
+			} else if (.x$loc_type == 'sv') {
+				cmd = sprintf("bcftools query -H -f '%%CHROM\t%%POS\t%%END\t%%REF\t%%ALT[\t%%GT]\n' %s -R %s > %s", 
+						  .x$vcf,
+						  tmp_file,
+						  out_file)
+			}
+
+			# run the locus pull
+			system(cmd, intern = TRUE)
+		}
+     
+		# read precomputed file
+		res = read_tsv(out_file, col_types = cols(.default = 'c'))
+
+		# rename columns
+		print(res)
+		res = res %>% rename_all(~str_replace(.x, '\\[.*\\]', '') %>% str_replace('# ', '') %>% str_replace(':GT', '')) %>%
+		  mutate(across(c(POS, END), as.integer)) %>%
+			rename(chr = CHROM, pos = POS, end = END)
+
+		# remove duplicates
+		res = res %>% distinct
+
+		# make sure no extra loci
+		if (.x$loc_type == 'snp') {
+			res = res %>% semi_join(.x$loci, by = c('chr', 'pos'))
+			n_miss_loci = setdiff(.x$loci %>% select(chr, pos), res %>% distinct(chr, pos)) %>% nrow
+		} else if (.x$loc_type %in% c('str', 'sv')) {
+			res = res %>% semi_join(.x$loci, by = c('chr', 'pos', 'end'))
+			n_miss_loci = setdiff(.x$loci %>% select(chr, pos, end), res %>% distinct(chr, pos, end)) %>% nrow
+		}
+
+		# user out
+		print(sprintf('Requested %d loci', .x$loci %>% nrow))
+		print(sprintf('Returned %d loci', res %>% distinct(chr, pos, end) %>% nrow))
+		print(sprintf('Missing loci %d', n_miss_loci))
+		
+		# edge cases for different types of variants
+		if (.x$loc_type == 'snp') {
+			res = res %>% mutate(end = if_else(end != pos, pos, end))
+		} else if (.x$loc_type == 'sv') {
+			# make ref and alt into upper case
+			res = res %>% mutate(across(c(REF, ALT), str_to_upper))
+
+			# assign allele ids
+			allele_ids = res %>% 
+				select(chr, pos, end, REF, ALT) %>%
+				group_by(chr, pos, end) %>%
+				summarise(allele = c(unique(REF), unique(ALT))) %>%
+				mutate(allele_id = 0:(n()-1)) %>%
+				ungroup
+			
+			# collapse into multi-allelic vcf
+			res = res %>% 
+				left_join(allele_ids, by = c('chr', 'pos', 'end', 'ALT' = 'allele')) %>%
+				pivot_longer(c(matches('^BXD'), C57BL6J, DBA2J), names_to = 'strain', values_to = 'has_gt') %>%
+				filter(has_gt != 0) %>%
+				mutate(gt = case_when(
+					has_gt == '.' ~ '.',
+					TRUE ~ as.character(allele_id)
+				)) %>%
+				distinct(chr, pos, end, strain, gt)
+
+			# there are a couple of strain/locus combination that seem to have the same allele (only 3)
+			res = res %>%
+				distinct(chr, pos, end, strain, .keep_all = TRUE)
+
+			# make like the other inputs
+			res = res %>%
+				mutate(gtgt = str_c(gt, '/', gt)) %>%
+				pivot_wider(id_cols = c(chr, pos, end), names_from = strain, values_from = gtgt, values_fill = '0/0')
+		}
+
+		# pivot longer
+		res = res %>% pivot_longer(cols = !c(chr, pos, end), names_to = 'strain', values_to = 'gt')
+
+		# output
+		return(res)
+	})
+
+	strain_info = readr::read_csv('../outs/strain_info.csv')
+	# merge strain information
+	for (i in c('str', 'snp')) {
+		loci_gts[[i]] = loci_gts[[i]] %>%
+			left_join(strain_info %>% select(short_name, bxd_id), by = c('strain' = 'short_name')) %>%
+			select(!strain) %>% rename(strain = bxd_id)
+	}
+
+	# recombine
+	loci_gts = loci_gts %>% map_df(~.x, .id = 'loc_type')
+
+	# join the loc_id back, b/c locus query was done by chr,pos,end and svs are queried separately
+	loci_gts = loci_gts %>% left_join(loci_of_int, by = c('loc_type', 'chr', 'pos', 'end'))
+
+	# add new svs manually
+	sv_gts = sv_data$locs_data %>%
+		# make sure to filter to SVs of a certain size
+		filter(sv_size > min_sv_size) %>%
+		distinct(chr, pos, end, sv_type, strains) %>%
+		unnest(strains) %>%
+		mutate(gt = '1/1') %>%
+		rename(strain = strains) %>%
+		semi_join(loci_of_int %>% filter(loc_type == 'sv'), by = c('chr', 'pos', 'end')) %>%
+		complete(nesting(chr, pos, end, sv_type), strain = (loci_gts %>% pull(strain) %>% unique), fill = list(gt = '0/0')) %>%
+		mutate(loc_type = 'sv') %>%
+		mutate(loc_id = str_c(chr, '_', pos, '_', end, '_', sv_type)) %>%
+		select(!sv_type)
+	loci_gts = bind_rows(loci_gts, sv_gts)
+
+	# now we only need loc_id to uniquely identify genotypes
+	loci_gts = loci_gts %>% select(loc_type, loc_id, strain, gt)
+
+	# separate alleles
+	split_gt = loci_gts %>% pull(gt) %>% str_split('/', simplify = TRUE)
+	loci_gts = loci_gts %>%
+		mutate(GT_A = split_gt[,1], GT_B = split_gt[,2]) %>%
+		mutate(across(c(GT_A, GT_B), as.integer))
+	# separate('gt', c('GT_A', 'GT_B'), sep = '/', convert = TRUE, remove = FALSE)
+
+	# unused strains
+	loci_gts = loci_gts %>% filter(!is.na(strain))
+
+	# check for missing loci again
+	if (nrow(
+			loci_of_int %>% 
+				anti_join(loci_gts %>% 
+							# distinct(loc_type, chr, pos, end), 
+							distinct(loc_type, loc_id), 
+						  # by = c('loc_type', 'chr', 'pos', 'end')) %>% count(loc_type)
+						  by = c('loc_type', 'loc_id')) %>% count(loc_type)
+		) != 0) stop('Missing loci')
+```
+# Filter non-segregating loci
+
+#. Remove mono-allelic and het-only variance loci
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# standardize missing values
+	loci_gts = loci_gts %>% mutate(gt = if_else(gt == '.', './.', gt))
+
+	# calculate number of unique genotypes per locus
+	n_gts_per_loc = loci_gts %>%
+		distinct(loc_type, loc_id, gt, GT_A, GT_B) %>%
+		filter(gt != './.') %>%
+		filter(GT_A == GT_B) %>%
+		count(loc_type, loc_id)
+	
+	# remove mono-allelic and het-only variance loci
+	loci_gts = loci_gts %>% 
+		anti_join(n_gts_per_loc %>% filter(n == 1), by = c('loc_type', 'loc_id'))
+
+	# apply filter to reduced annotated variants
+	redux_vep_annot = redux_vep_annot %>% semi_join(loci_gts, by = 'loc_id')
+
+	# calculate the number of missing values per locus
+	n_miss_per_loc = loci_gts %>%
+		distinct(loc_type, loc_id) %>%
+		left_join(loci_gts %>% 
+				count(loc_type, loc_id, gt, name = 'n_miss_strain') %>% 
+				filter(gt == './.') %>%
+				select(loc_type, loc_id, n_miss_strain), by = c('loc_type', 'loc_id')) %>%
+		mutate(n_miss_strain = replace_na(n_miss_strain, 0))
+```
+
+# Updated annotated variant counts
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	redux_vep_annot %>%
+		distinct(loc_type, loc_id) %>%
+		count(loc_type, name = 'n_loci')
+```
+# Missing genotypes per locus
+
+#. Let's not consider loci where more than 1/2 strains missing (75 strains)
+
+```{r echo=TRUE, fig.width = 8, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	p = n_miss_per_loc %>%
+		ggplot(aes(n_miss_strain)) + 
+		geom_histogram(bins = 50) +
+		geom_vline(xintercept = 75, linetype = 'dashed') + 
+		geom_text(data = ~.x %>% count(loc_type),
+			  aes(label = scales::comma(n)), x = Inf, y = Inf, hjust = 'inward', vjust = 'inward') + 
+		facet_wrap(~loc_type, scales = 'free') + 
+		theme_half_open()
+	p
+
+	# filter loci with too many missing strains
+	loci_gts = loci_gts %>%
+		# anti_join(n_miss_per_loc %>% filter(n_miss_strain >= 75), by = c('loc_type', 'chr', 'pos', 'end'))
+		anti_join(n_miss_per_loc %>% filter(n_miss_strain >= 75), by = c('loc_type', 'loc_id'))
+
+	# apply filter to reduced annotated variants
+	redux_vep_annot = redux_vep_annot %>% semi_join(loci_gts, by = 'loc_id')
+```
+
+# Updated annotated variant counts
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	redux_vep_annot %>%
+		distinct(loc_type, loc_id) %>%
+		count(loc_type, name = 'n_loci')
+```
+
+## Non-major allele frequency
+
+#. Filters: `filter1 & filter2`
+
+```{r echo=TRUE, fig.width = 8, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# calculate allele frequence and distplay non-major allele count
+	al_freq = loci_gts %>%
+		filter(!is.na(GT_A)) %>%
+		pivot_longer(cols = c(GT_A, GT_B), names_to = 'al_type', values_to = 'al') %>%
+		count(loc_type, loc_id, al) %>%
+		group_by(loc_type, loc_id) %>%
+		mutate(tot_ac = sum(n), freq = n/sum(n)) %>%
+		ungroup %>%
+		arrange(desc(n)) %>%
+		distinct(loc_type, loc_id, .keep_all = TRUE) %>%
+		rename(maj_af = freq) %>% 
+		mutate(nonmaj_af = 1 - maj_af) %>%
+		select(loc_type, loc_id, tot_ac, maj_af, nonmaj_af)
+
+	p = al_freq %>%
+		ggplot(aes(nonmaj_af)) + 
+		geom_histogram(bins = 50) + 
+		geom_text(data = ~.x %>% distinct(loc_type, loc_id) %>% count(loc_type),
+			  aes(label = scales::comma(n)), x = Inf, y = Inf, hjust = 'inward', vjust = 'inward') + 
+		facet_wrap(~loc_type, scales = 'free_y') + 
+		theme_half_open() +
+		labs(y = '# loci')
+	p
+
+```
+
+# Load %expanded phenotype
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+
+  pheno_vals = read_csv('../outs/pheno_vals_tetra.csv') %>% filter(metric == '% expanded')
+
+```
+
+# Regress phenotype on genotype for each locus
+
+#. Simple ANOVA with genotype as factor
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+
+	# standard lm way
+		nested_loci_gts = loci_gts %>%
+			filter(!is.na(GT_A)) %>%
+			mutate(GT_T = GT_A + GT_B) %>%
+			left_join(pheno_vals %>% select(strain, pheno), by = 'strain') %>%
+			# nest(data = !c(loc_type, chr, pos, end))
+			nest(data = !c(loc_type, loc_id))
+		
+		fit_lm = function(locus_data, type = c('linear', 'aov')) {
+			if (type == 'linear') {
+				lm(pheno ~ GT_T, data = locus_data) %>% broom::tidy() %>% 
+				filter(term == 'GT_T') %>% select(p.value)
+			} else if (type == 'aov') {
+				anova(lm(pheno ~ gt, data = locus_data)) %>%
+				broom::tidy() %>% filter(term == 'gt') %>% select(p.value)
+			}
+		}
+
+		pb <- progress::progress_bar$new(total = loci_gts %>% distinct(loc_type, loc_id) %>% nrow)
+		assoc_test = nested_loci_gts %>%
+			mutate(lm_fit = map2(data, loc_id, function(.x, .y) { 
+				pb$tick()
+				ret = try(fit_lm(.x, 'aov'), silent = TRUE)
+				# print((ret))
+				# print(class(ret))
+				if (is.data.frame(ret)){
+				# if (class(ret) != 'try-error') {
+					return(ret)
+				} else { return(tibble(p.value = NA)) }
+			})) %>% select(!data) %>% unnest(lm_fit)
+
+	# check if association was run for all loci
+	if (!all_equal(
+		# loci_gts %>% distinct(loc_type, chr, pos, end),
+		# assoc_test %>% distinct(loc_type, chr, pos, end)
+		loci_gts %>% distinct(loc_type, loc_id),
+		assoc_test %>% distinct(loc_type, loc_id)
+		)) stop('Association tests missing')
+
+	# join allele frequency information; discard intercept
+	assoc_test = assoc_test %>%
+		filter(!is.na(p.value)) %>%
+		# filter(term == 'GT_T') %>%
+		# left_join(al_freq, by = c('loc_type', 'chr', 'pos', 'end'))
+		left_join(al_freq, by = c('loc_type', 'loc_id'))
+```
+
+# Simplify using top consequence
+
+#. VEP assigns to a variant/feature pair
+    - One or more IMPACTs
+    - One or more Consequences
+    - Consequence field can be a concatenation of multiple SO terms
+#. This creates a large amount of row redundancy
+
+FOR PLOTTING
+
+1. Want a single datapoint per variant/gene
+    - Use most severe consequence instead of concatenate Consequence column
+    - For every variant/gene/Feature/IMPACT, keep the most severe consequence
+    - For every variant/gene/Feature, keep the most severe IMPACT
+    - For every variant/gene, keep the Feature with the most severe IMPACT
+
+FOR TABULAR DISPLAY
+
+1. Want a single row per variant/gene/IMPACT and multi-level information concatenated
+    - For every variant/gene/Feature/IMPACT, keep the Consequence with the most severe top consequence (otherwise too complicated)
+    - For every variant/gene/IMPACT concatenate all Features where the IMPACT happens and level concatenate the Consequence columns (i.e. lvl1/lvl1/lvl1, lvl2/lvl2, lvl3)
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+    # read in severity of VEP consequences
+	vep_conseq = readr::read_delim('../info/vep_conseq.csv', delim = ';', col_types = cols(.default = 'c')) %>% 
+		mutate(severity = 1:n())
+    
+    # find top consequence for each comma separate Consequence
+	conseq_split = vep_annot %>% 
+		distinct(IMPACT, Consequence) %>% 
+		mutate(conseq_split = map(Consequence, function(.x) { 
+			csq = str_split(.x, ',')[[1]] 
+			tibble(ord = 1:length(csq), csq)
+		})) %>%
+		unnest(conseq_split) %>%
+		group_by(Consequence) %>%
+		slice_min(n = 1, order_by = ord, with_ties = FALSE) %>%
+		ungroup %>%
+		left_join(vep_conseq %>% select(SO_term, severity), by = c('csq' = 'SO_term'))
+		conseq_split = conseq_split %>% distinct(Consequence, csq, severity) %>% rename(top_csq = csq)
+
+	# function for splitting Consequence column, then reconcatenating
+	lvl_concat = function(comma_sep_vals) {
+		val_mat = comma_sep_vals %>% str_split(',', simplify = TRUE)
+		apply(val_mat, 2, function(.x) str_c(.x %>% discard(~.x == '') %>% unique, collapse = '/')) %>% unique %>% str_c(collapse = ',')
+	}
+
+
+	# make a data.frame for tabular display
+	redux_vep_annot_tab_disp = redux_vep_annot %>%
+		left_join(conseq_split, by = 'Consequence') %>%
+		arrange(severity) %>%
+		distinct(loc_type, loc_id, SYMBOL, Feature, IMPACT, .keep_all = TRUE) %>%
+		group_by(loc_type, loc_id, SYMBOL, IMPACT) %>%
+		summarise(Consequence = lvl_concat(Consequence), 
+			  Feature = str_c(Feature %>% unique, collapse = ','),
+			  BIOTYPE = str_c(BIOTYPE %>% unique, collapse = ','),
+			  Feature_type = str_c(Feature_type %>% unique, collapse = ','), .groups = 'drop'
+		)
+```
+
+# Organize data
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# vep annot contains useful data we may want for downstream analysis like rsids for example
+	raw_vep_annot = raw_vep_annot %>%
+		mutate(loc_id = if_else(loc_type %in% c('str', 'snp'), 
+								str_c(chr, '_', pos, '_', end),
+								str_c(chr, '_', pos, '_', end, '_', sv_type))) %>%
+		semi_join(redux_vep_annot, by = 'loc_id')
+
+	vep_data = list(
+		tx_info                  = tx_info,
+		assoc_test               = assoc_test,
+		conseq_split             = conseq_split,
+		loci_gts                 = loci_gts,
+		al_freq                  = al_freq,
+		redux_vep_annot          = redux_vep_annot,
+		redux_vep_annot_tab_disp = redux_vep_annot_tab_disp,
+		raw_vep_annot            = raw_vep_annot
+	)
+```
+
+# Main figure 3
+## Get CDS positions for protein coding transcript of Msh3
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+
+    # get detailed info for ENSMUST00000185852.6
+	attr_to_get = c(
+		gene_id    = "ensembl_gene_id",
+		tx_id      = "ensembl_transcript_id",
+		cds_pos    = "cds_start",
+		cds_end    = "cds_end",
+		exon_id    = "ensembl_exon_id",
+		rank       = "rank",
+		genome_pos = "genomic_coding_start",
+		genome_end = "genomic_coding_end"
+    )
+	msh3_main_tx = biomaRt::getBM(
+		attributes = attr_to_get,
+		filters = c('ensembl_transcript_id'), 
+		values = c(list('ENSMUST00000185852')), 
+		mart = e102) %>% 
+		as_tibble %>%
+		rename(all_of(attr_to_get)) %>%
+		arrange(rank)
+```
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# unusual genomic coordinates from EBML. Instead align pfams manually above
+	# # determine genomic coordinates for pfam domains even if these are spllit
+	# # approx(x = c(139, 256), y = c(92353225, 92353342), xout = c(188, 299), rule = 2, method = 'linear')$y
+	# define pfam motif domain positions
+	msh3_pfam = tribble(
+		~domain_name , ~cds_pos , ~cds_end  , ~type          , ~accession,
+		'MutS_I'   , 188 , 299  , 'DNA mismatch binding' , 'PF01624' ,
+		'MutS_II'  , 324 , 480  , 'connector'            , 'PF05188' ,
+		'MutS_III' , 498 , 796  , 'lever'                , 'PF05192' ,
+		'MutS_V'   , 850 , 1052 , 'ATPase'               , 'PF00488' ) %>%
+		mutate(across(c(cds_pos, cds_end), ~.x*3))
+	pfam_coors = 
+		crossing(
+		msh3_main_tx %>%
+			select(exon_id, rank, t_pos = cds_pos, t_end = cds_end, genome_pos, genome_end),
+		msh3_pfam %>%
+			select(type, domain_name, q_pos = cds_pos, q_end = cds_end)
+		) %>%
+		filter((q_pos >= t_pos & q_pos <= t_end) | 
+			   (q_end >= t_pos & q_end <= t_end) |
+			   (t_pos >= q_pos & t_pos <= q_end) | 
+			   (t_end >= q_pos & t_end <= q_end)
+		   ) %>%
+		arrange(domain_name, rank) %>%
+		rowwise %>%
+		mutate(q_genome = list(
+			approx(x    = c_across(c(t_pos, t_end)), 
+				   y    = c_across(c(genome_end, genome_pos)), # NOTE: gene is reversed
+				   xout = c_across(c(q_pos, q_end)), 
+				   rule = 2, method = 'linear')$y
+		)) %>%
+		mutate(q_genome_pos = q_genome[2], q_genome_end = q_genome[1]) %>%
+		select(!q_genome) %>%
+		select(domain_name, type, rank, cds_pos = q_pos, cds_end = q_end, genome_pos = q_genome_pos, genome_end = q_genome_end)
+```
+# Data filters
+
+These are the filters that are used at various points on variant/feature pairs. Also define filter thresholds here.
+
+#. `filter1`: variants overlapping protein coding genes
+#. `filter2`: variants segregating
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	lod_thresh = -log10(0.0005)
+	nonmaj_af_thresh = 0.15
+```
+
+# Useful reference
+
+#. https://m.ensembl.org/info/genome/variation/prediction/protein_function.html
+
+# Variants by genomic coordinate
+
+#. Top 20 eQTL genes
+#. Filters: `filter1 & filter2`
+#. Of the DNA repair genes, Atg10, Msh3 and Xrcc4 have some HIGH/MODERATE/LOW impact variants that need review
+
+```{r echo=TRUE, fig.width = 12, fig.height = 8, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# create a function for reducing for plotting data
+	reduce_for_plt = function(data) {
+		data %>%
+			left_join(conseq_split, by = 'Consequence') %>%
+			arrange(severity) %>%
+			distinct(loc_type, loc_id, SYMBOL, Feature, IMPACT, .keep_all = TRUE) %>%
+			arrange(IMPACT) %>%
+			distinct(loc_type, loc_id, SYMBOL, Feature, .keep_all = TRUE) %>%
+			distinct(loc_type, loc_id, SYMBOL, .keep_all = TRUE)
+	}
+
+	top_genes_data = redux_vep_annot %>%
+		reduce_for_plt %>% 
+		left_join(assoc_test, by = c('loc_type', 'loc_id')) %>%
+		filter(!is.na(p.value)) %>%
+		mutate(pass_filter = -log10(p.value) >= lod_thresh & nonmaj_af >= nonmaj_af_thresh) %>%
+		mutate(rare = nonmaj_af < nonmaj_af_thresh) # %>%
+```
+
+## QTL by position
+
+#. Each variant has a -log10(p) score
+#. Note that this is different from QTL mapping with rqtl2
+
+```{r echo=TRUE, fig.width = 16, fig.height = 6, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# configs
+	# xlims = c(92.344, 92.352)
+	xlims = c(92.215, 92.355)
+	xlims_zoom = c(92.344, 92.352)
+	nmd_txs = c('ENSMUST00000191550.6', 'ENSMUST00000190393.6',
+				'ENSMUST00000191509.6', 'ENSMUST00000187874.6')
+	prot_tx = 'ENSMUST00000185852.6'
+	tx_cols = c(rep('#7BCDC5', length(nmd_txs)), rep('#9D8CB4', 1)) %>% set_names(c(nmd_txs, prot_tx))
+	tx_labs = c(rep('NMD', length(nmd_txs)), rep('prot', 1)) %>% set_names(c(nmd_txs, prot_tx))
+
+	# pfram track
+	pfam_track = pfam_coors %>%
+		group_by(domain_name, type) %>%
+		summarise(genome_pos = min(genome_pos), genome_end = max(genome_end)) %>%
+		ungroup %>%
+		mutate(across(c(genome_pos, genome_end), ~.x/1e6)) %>%
+		mutate(label = sprintf('%s\n%s', domain_name, type)) %>%
+		ggplot() +
+		theme_half_open() +
+		theme(axis.title.y = element_blank(),
+			  axis.text.y  = element_blank(),
+			  axis.ticks.y = element_blank(),
+			  axis.line.y  = element_blank(),
+			  axis.title.x = element_blank(),
+			  axis.text.x  = element_blank(),
+			  axis.ticks.x = element_blank(),
+			  axis.line.x  = element_blank()
+		)
+	pfam_track1 = pfam_track + 
+		geom_tile(aes(width = (genome_end - genome_pos), y = 0, x = (genome_pos + genome_end)/2), fill = '#FF5413', height = 0.2) +
+		geom_text(aes(label = label, x = (genome_end + genome_pos)/2, y = 1), hjust = 0.5) 
+	pfam_track2 = pfam_track + 
+		geom_tile(aes(width = (genome_end - genome_pos), y = 0, x = (genome_pos + genome_end)/2), fill = '#FF5413', height = 0.2) +
+		geom_text(aes(label = label, x = (genome_end + genome_pos)/2, y = 1), hjust = 0.5) 
+	
+	# transcripts tracks
+	canon_tx = tx_info %>%
+		filter(gene_name == 'Msh3') %>%
+		filter(tx_id == prot_tx)
+	NMD_tx = tx_info %>%
+		filter(gene_name == 'Msh3') %>%
+		filter(tx_id %in% c(nmd_txs, prot_tx))
+	tx_track = canon_tx %>%
+		ggplot() +
+		# non-coding exon
+		geom_tile(data = ~.x %>% distinct(tx_id, exon_pos, exon_end),
+			  aes(width = (exon_end - exon_pos), y = tx_id, x = (exon_pos + exon_end)/2, color = tx_id), height = 0.4, fill = NA) +
+		# coding exon
+		geom_tile(data = ~.x %>% distinct(tx_id, cds_pos, cds_end) %>% filter(!is.na(cds_pos)),
+			  aes(width = (cds_end - cds_pos), y = tx_id, x = (cds_pos + cds_end)/2, color = tx_id, fill = tx_id), height = 0.4) +
+		# intron
+		geom_tile(data = ~.x %>% distinct(tx_id, tx_pos, tx_end, tx_type),
+			  aes(width = (tx_end - tx_pos), y = tx_id, x = (tx_pos + tx_end)/2, color = tx_id, fill = tx_id), height = 0.1) +
+		scale_color_manual(values = tx_cols) + 
+		scale_fill_manual(values = tx_cols) + 
+		scale_y_discrete(labels = tx_labs) + 
+		coord_cartesian(xlim = xlims) + 
+		theme_half_open() +
+		theme(
+			legend.position = 'none',
+			axis.title.y = element_blank(), 
+			plot.title = element_text(size = 6, hjust = 0.5)) +
+		labs(x = 'Mb (chr13)')
+
+	# LOD track
+	ltr_lab = 'LTR\ninsertion(387bp)'
+	vars_to_lab = c('rs49418360', 
+					'rs49524640', 
+					'rs48140189',
+					# 'rs29237028', 
+					# 'rs51768241', 
+					# 'rs233396231', 
+					# 'rs255836106',
+					# 'rs50848869', 
+					'rs49933543', 
+					'rs48930870',
+					ltr_lab
+					
+	)
+	lod_track = top_genes_data %>% 
+		filter(SYMBOL == 'Msh3') %>%
+		filter(!rare) %>%
+		left_join(raw_vep_annot %>% distinct(loc_id, Existing_variation) %>% filter(Existing_variation != '-'), by = 'loc_id') %>%
+		mutate(Existing_variation = if_else(loc_id == 'chr13_92348038_92348424_DEL', ltr_lab, Existing_variation)) %>%
+		mutate(top_csq = recode(top_csq, 'missense_variant' = 'missense', 'splice_region_variant' = 'splice')) %>%
+		ggplot(aes(pos/1e6, -log10(p.value), color = IMPACT)) +
+		geom_point(data = ~.x %>% filter(IMPACT == 'MODIFIER')) + # make sure the MODIFIER points are underneath the other effects
+		geom_point(data = ~.x %>% filter(IMPACT != 'MODIFIER')) + 
+		geom_text_repel(data = ~.x %>% 
+							filter(Existing_variation %in% vars_to_lab) %>%
+							mutate(Existing_variation = if_else(loc_id == 'chr13_92348038_92348424_DEL', Existing_variation, str_c(Existing_variation, '\n(', top_csq, ')'))),
+						aes(label = Existing_variation), color = 'black',
+						min.segment.length = 0,
+						box.padding = 1) + 
+		scale_color_manual(values = c('HIGH' = '#f03b20', 'MODERATE' = '#2c7fb8' , 'LOW' = '#31a354', 'MODIFIER' = 'gray70')) +
+		scale_shape_manual(values = c(`TRUE` = 1, `FALSE` = 19)) +
+		coord_cartesian(xlim = xlims) + 
+		theme_half_open() +
+		theme(
+			legend.position = c(0.02, 0.02),
+			legend.justification = c(0, 0),
+			legend.box.background = element_rect(fill = 'white', color = 'black'),
+			legend.margin = margin(5, 5, 5, 5, unit = 'pt')
+		) +
+		labs(x = 'Mb (chr13)')
+	p1 = plot_grid(ggdraw() + draw_text(text = 'Pfam protein domains', x = 0, y = 0, hjust = 0, fontface = 'bold'), 
+				   pfam_track1 + coord_cartesian(xlim = xlims, ylim = c(0, 2)), 
+				   ggdraw() + draw_text(text = 'Canonical transcript', x = 0, y = 0, hjust = 0, fontface = 'bold'),
+				   tx_track, 
+				   lod_track + geom_rect(aes(xmin = xlims_zoom[1], xmax = xlims_zoom[2], ymin = 0, ymax = Inf), fill = NA, color = 'gray50', linetype = 'dashed'), 
+				   ncol = 1, axis = 'lr', align = 'v', rel_heights = c(0.05, 0.3, 0.05, 0.3, 1))
+
+	# zoom in
+	p2 = plot_grid(pfam_track2 + coord_cartesian(xlim = xlims_zoom, ylim = c(0, 2)), 
+				   ( tx_track %+% NMD_tx ) + coord_cartesian(xlim = xlims_zoom), 
+				   lod_track + coord_cartesian(xlim = xlims_zoom) + theme(legend.position = 'none'), 
+				   ncol = 1, axis = 'lr', align = 'v', rel_heights = c(0.3, 0.5, 1))
+	p = plot_grid(p1, p2, nrow = 1, labels = c('a', 'b'))
+	p
+
+	w = 16; h = 6
+	ggsave(fs::path('../pdfs/', 'Fig3.pdf'), p, w = w, h = h)
+```
+# Detailed Supplementary Table IMPACTFUL VARS
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	tx_labels = tribble(~Feature, ~feat_lab,
+		'ENSMUST00000022115', 'Xrcc4-201',
+		'ENSMUST00000022119', 'Atg10-201',
+		'ENSMUST00000185852', 'Msh3-202',
+		# 'ENSMUST00000187424', 'Msh3-205',
+		'ENSMUST00000190393', 'Msh3-209'
+	)
+	# function to pull data from raw VEP output which is not reduced at all and has all the useful columns like rsid and SIFT
+	smry_var_tbl = function(data) {
+		raw_vep_annot %>%
+			semi_join(data) %>% # data can be whatever you want as long as columns are named the same for join to work
+			# glimpse
+			select(loc_type, loc_id, SYMBOL, IMPACT, Feature, Consequence, BIOTYPE, Existing_variation, Allele, Amino_acids, SIFT) %>%
+			left_join(conseq_split %>% select(Consequence, top_csq), by = 'Consequence')
+	}
+	
+	smry = 
+		redux_vep_annot %>%
+		left_join(assoc_test %>% select(loc_type, loc_id, p.value, nonmaj_af), by = c('loc_type', 'loc_id')) %>%
+		mutate(LOD = -log10(p.value)) %>%
+		filter(nonmaj_af >= nonmaj_af_thresh, LOD >= lod_thresh) %>%
+		select(loc_id, SYMBOL, Feature) %>%
+		smry_var_tbl %>%
+		# aggregate SIFT scores across multiple transcripts
+		mutate(SIFT = str_replace(SIFT, regex('\\(.*\\)$'), '')) %>%
+		group_by(loc_id) %>%
+		#
+		mutate(SIFT = str_c(SIFT %>% discard(~.x == '-') %>% unique, collapse = '\n')) %>%
+		ungroup %>%
+		inner_join(tx_labels, by = 'Feature') %>%
+		filter(IMPACT %in% c('HIGH', 'MODERATE', 'LOW')) %>%
+		mutate(SYMBOL = fct_relevel(SYMBOL, c('Xrcc4', 'Atg10', 'Msh3'))) %>%
+		arrange(SYMBOL, top_csq) %>%
+		select(SYMBOL, "Locus type" = loc_type, Locus = loc_id, "Top consequence" = top_csq, IMPACT, Feature = feat_lab, BIOTYPE, Existing_variation, Amino_acids, SIFT)
+
+	# we only want to display variants for Msh3-209 that are not also variants in Msh3-202
+	smry = rbind(
+		smry %>% filter(!Feature %in% c('Msh3-202', 'Msh3-209')),
+		smry %>% 
+			filter(Feature %in% c('Msh3-202', 'Msh3-209')) %>%
+			# factorize in order to reorder
+			mutate(Feature = fct_relevel(Feature, c('Msh3-202', 'Msh3-209'))) %>%
+			arrange(Feature) %>%
+			distinct(Locus, .keep_all = TRUE)
+	)
+	
+	# as a single table
+	ft = smry %>% flextable %>% merge_v(j = 1:10) %>% theme_box
+	ft
+	save_as_html(ft, path = path('../pdfs/', 'Suppl_Tbl_2.html'))
+```
+
+
+# Supp. Table/Figure SNPSCAN
+
+#. `filter1 & filter2`
+#. Plus:
+    - `PASS_FILTER` LOD thresh
+    - `PASS_FILTER` non-major al freq thresh
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+
+  dna_repair_genes = c('Xrcc4', 'Ssbp2', 'Msh3', 'Ccnh', 'Atg10')
+
+  # create a function for reducing for plotting data
+	reduce_for_plt = function(data) {
+		data %>%
+			left_join(conseq_split, by = 'Consequence') %>%
+			arrange(severity) %>%
+			distinct(loc_type, loc_id, SYMBOL, Feature, IMPACT, .keep_all = TRUE) %>%
+			arrange(IMPACT) %>%
+			distinct(loc_type, loc_id, SYMBOL, Feature, .keep_all = TRUE) %>%
+			distinct(loc_type, loc_id, SYMBOL, .keep_all = TRUE)
+	}
+
+	# data = redux_vep_annot
+	var_scan_tbl = function(data, loc_types = c('str', 'snp', 'sv')) {
+		# take the top impact per variant/gene combination
+		to_disp = data %>%
+			filter(loc_type %in% loc_types) %>%
+			reduce_for_plt %>% 
+			left_join(assoc_test, by = c('loc_type', 'loc_id')) %>%
+			filter(!is.na(p.value)) %>%
+			mutate(pass_filter = -log10(p.value) >= lod_thresh & nonmaj_af >= nonmaj_af_thresh) %>%
+			filter(pass_filter)
+
+		# table view
+		ft_headers = to_disp %>%
+			distinct(IMPACT, severity, top_csq) %>%
+			unite('col_keys', c('IMPACT', 'top_csq'), remove = FALSE) %>%
+			relocate(col_keys, .before = 1) %>%
+			arrange(IMPACT, severity) %>%
+			mutate_all(as.character) %>%
+			select(!severity) %>%
+			set_names(c('col_keys', 'line1', 'line2'))
+		ft = to_disp %>% 
+			count(SYMBOL, IMPACT, top_csq) %>%
+			complete(SYMBOL = data %>% pull(SYMBOL) %>% unique) %>%
+			pivot_wider(id_cols = SYMBOL, names_from = c(IMPACT, top_csq), values_from = n) %>%
+			select(SYMBOL, all_of(ft_headers %>% pull(col_keys)))
+		ft = ft %>% 
+			rowwise %>%
+			mutate(
+				   n_high_vars = sum(c_across(matches('^(HIGH)')), na.rm = TRUE),
+				   n_nonmod_vars = sum(c_across(matches('^(HIGH|MODERATE|LOW)')), na.rm = TRUE),
+				   n_vars = sum(c_across(!SYMBOL), na.rm = TRUE)) %>% 
+			ungroup %>%
+		  arrange(desc(n_nonmod_vars), desc(n_high_vars), desc(n_vars)) %>%
+			left_join(gene_info %>% select(gene_name, gene_descr), by = c('SYMBOL' = 'gene_name')) %>%
+			select(!n_vars) %>%
+			mutate(across(matches('n_'), ~if_else(.x == 0, '', as.character(.x))))
+		hlight_rows = ft %>% pull(SYMBOL) %>% str_which(str_c(dna_repair_genes, collapse = '|'))
+		bg_col = '#9ecae1'
+		ft = ft %>% mutate(row = 1:n()) %>% relocate(row, .before = 1)
+		ft_obj = ft %>%
+			flextable %>%
+			set_header_df(mapping = ft_headers %>% 
+						add_row(col_keys = 'n_high_vars', line1 = NA, line2 = '# high impact variants') %>%
+						add_row(col_keys = 'n_nonmod_vars', line1 = NA, line2 = '# non-modifier impact variants') %>%
+						add_row(col_keys = 'gene_descr', line1 = NA, line2 = 'Gene description'), key = 'col_keys') %>%
+			merge_h(part = "header", i = 1) %>%
+			theme_box %>%
+			rotate(i = 2, j = 1:(dim(ft)[2]-1), rotation = "btlr", align = 'bottom', part = "header") %>%
+			align(align = "center", part = "all") %>%
+			font(fontname = 'Arial', part = "all") %>%
+			width(width = 0.1) %>%
+			width(width = 3.5, j = ncol(ft)) %>%
+			align(align = 'left', j = ncol(ft)) %>%
+			valign(i = 2, j = dim(ft)[2], valign = 'bottom', part = 'header') %>%
+			bg(bg = bg_col, i = hlight_rows) %>%
+			# height(height = 0.1, part = 'body')
+			padding(padding.top = 0.1, padding.bottom = 0.1, part = 'body')
+
+		# final variant counts in SNPSCAN table
+		smry = to_disp %>%
+			distinct(SYMBOL, loc_type, chr, pos, end, IMPACT) %>%
+			count(IMPACT, name = 'n_variants')
+		smry = smry %>% add_row(smry %>% summarise(n_variants = sum(n_variants)))
+
+		#
+		return(list(ft_obj = ft_obj, smry = smry))
+	}
+	
+	ret = var_scan_tbl(redux_vep_annot)
+	ret$ft_obj
+	ret$smry
+	ret$ft_obj %>% save_as_html(path = path('../pdfs/', 'Suppl_Tbl_1.html'))
+
+```
