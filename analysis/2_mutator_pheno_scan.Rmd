@@ -73,7 +73,7 @@ h6 {font-size: 0.75em}
 		'% expanded'         = 'proportion_expanded'
 	)
 	
-	FINALML = '4' # final motif length. either "4" (tetranucs only) or "all" (all motifs)
+	FINALML = 'all' # final motif length. either "4" (tetranucs only) or "all" (all motifs)
 ```
 
 
@@ -89,11 +89,6 @@ h6 {font-size: 0.75em}
 	left_join(motif_info %>% select(chr, pos, end, motif_len), by = c('chr', 'pos', 'end'))
 	strain_info = strain_info %>%
 	  mutate(off_epoch = recode(off_epoch, epoch_1a = 'epoch_1', epoch_1b = 'epoch_1', epoch_1c = 'epoch_1')) 
-	
-	# Restrict to loci where inference is correct
-	correct_loci = read_tsv('../data/denovo_info/denovo_ri_gts_hom_bycomp.tsv', col_types = cols())
-  denovo_strs = denovo_strs %>%
-  semi_join(correct_loci, by = c('chr', 'pos', 'end'))
 	
 	num_mut = nrow(denovo_strs %>% distinct(chr, pos, end))
   print(paste("Num mutations:", num_mut))
