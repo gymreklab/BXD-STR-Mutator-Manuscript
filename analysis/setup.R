@@ -32,6 +32,11 @@ denovo_strs = denovo_strs %>%
   dplyr::rename(founder_rn = fou_rn) %>%
   filter(strain != 'BXD194')
 
+# Restrict to loci where inference is correct
+correct_loci = read_tsv('../data/denovo_info/denovo_ri_gts_hom_bycomp.tsv', col_types = cols())
+denovo_strs = denovo_strs %>%
+  semi_join(correct_loci, by = c('chr', 'pos', 'end'))
+
 # Output mutations list to a file
 write.csv(denovo_strs, file='../outs/denovo_strs_filtered.csv')
 
