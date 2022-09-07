@@ -1,8 +1,8 @@
 ---
 title: "3_vep_annot_per_gene"
 output:
-  html_document: default
   pdf_document: default
+  html_document: default
 ---
 
 ```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = FALSE, eval = TRUE, message = FALSE, warning = FALSE}
@@ -21,7 +21,7 @@ output:
 	library(ggrepel)
 	library(DT)
 	library(ggh4x)
-	
+	# library(webshot)
 ```
 
 # QTL region for tetra
@@ -729,7 +729,7 @@ FOR TABULAR DISPLAY
 
 ```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
     # read in severity of VEP consequences
-	vep_conseq = readr::read_delim('../info/vep_conseq.csv', delim = ';', col_types = cols(.default = 'c')) %>% 
+	vep_conseq = readr::read_delim('../data/vep/vep_conseq.csv', delim = ';', col_types = cols(.default = 'c')) %>% 
 		mutate(severity = 1:n())
     
     # find top consequence for each comma separate Consequence
@@ -1074,6 +1074,8 @@ These are the filters that are used at various points on variant/feature pairs. 
 	ft = smry %>% flextable %>% merge_v(j = 1:10) %>% theme_box
 	ft
 	save_as_html(ft, path = path('../pdfs/', 'Suppl_Tbl_2.html'))
+	# save_as_image(x = ft , path = path('../pdfs/', 'Suppl_Tbl_2.pdf'))
+
 ```
 
 
@@ -1171,5 +1173,6 @@ These are the filters that are used at various points on variant/feature pairs. 
 	ret$ft_obj
 	ret$smry
 	ret$ft_obj %>% save_as_html(path = path('../pdfs/', 'Suppl_Tbl_1.html'))
+	# save_as_image(x = ret$ft_obj , path = path('../pdfs/', 'Suppl_Tbl_1.pdf'))
 
 ```
