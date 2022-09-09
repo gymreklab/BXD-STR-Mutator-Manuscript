@@ -72,7 +72,7 @@ h6 {font-size: 0.75em}
 
 # Proportion new mutations by epoch
 
-```{r echo=TRUE, fig.width = 12, fig.height = 6, fig.align = 'center', cache = TRUE, eval = TRUE}
+```{r echo=TRUE, fig.width = 12, fig.height = 6, fig.align = 'center', eval = TRUE}
 	# assemble plot that shows only the number of de novo hom loci per strain
 	newvar_perc_per_strain = denovo_strs %>%
 		  count(strain) %>%
@@ -119,18 +119,18 @@ h6 {font-size: 0.75em}
 
 # Location of de novos
 
-```{r echo=TRUE, fig.width = 12, fig.height = 6, fig.align = 'center', cache = TRUE, eval = TRUE}
-#pdf(fs::path("pdfs", "Suppl_FigKaryoplot.pdf"))
+```{r echo=TRUE, fig.width = 12, fig.height = 6, fig.align = 'center', eval = TRUE}
+pdf(fs::path("../pdfs", "Suppl_FigKaryoplot.pdf"))
 detail.region = toGRanges(data.frame("chr13", 89e6, 92e6))
 kp <- plotKaryotype(genome="mm10", cytobands = GRanges())
 kpDataBackground(kp, data.panel = 1, r0=0, r1=0.45, color="white")
 kpPoints(kp, chr=denovo_strs$chr, x=denovo_strs$pos, y=rep(0.1, nrow(denovo_strs)), cex=0.01*(denovo_strs %>% 
     count(chr, pos, end, name = 'n_strains')%>% pull(n_strains)))
-#dev.off()
+dev.off()
 ```
 
 # Size of mutations
-```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', eval = TRUE}
 	# prep input df 
 	xlims = -5:5
 	to_plt = denovo_strs %>%
@@ -156,7 +156,7 @@ kpPoints(kp, chr=denovo_strs$chr, x=denovo_strs$pos, y=rep(0.1, nrow(denovo_strs
 
 # Size of mutations by motif length
 
-```{r echo=TRUE, fig.width = 8, fig.height = 5.5, fig.align = 'center', cache = TRUE, eval = TRUE}
+```{r echo=TRUE, fig.width = 8, fig.height = 5.5, fig.align = 'center', eval = TRUE}
 	# prep input df 
 	xlims = -5:5
 	to_plt = denovo_strs %>%
@@ -227,7 +227,7 @@ kpPoints(kp, chr=denovo_strs$chr, x=denovo_strs$pos, y=rep(0.1, nrow(denovo_strs
 ```
 # Strains with mutations per locus
 
-```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', eval = TRUE}
 	p = denovo_strs %>%
 		count(chr, pos, end, name = 'n_strains') %>%
 		count(n_strains, name = 'n_loci') %>%
@@ -264,7 +264,7 @@ print(paste("percent of loci with singleton mutation", num_private/num_mut_loci)
 ```
 
 # PCA of new mutations
-```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', eval = TRUE}
 	# form the strain by locus matrix for PCA
 	strain_by_loc = denovo_strs %>%
 	unite('locus', c('chr', 'pos', 'end')) %>%
