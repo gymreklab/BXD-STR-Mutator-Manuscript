@@ -90,6 +90,12 @@ write_csv(strain_info, '../outs/strain_info.csv')
 gt_strs = readRDS(fs::path(data_dir, 'str_gts/all_repcn_proc_nosegdup_nolowcr_segreg.rds'))
 write_csv(gt_strs, '../outs/all_repcn_proc_nosegdup_nolowcr_segreg.csv') # keep a csv version
 
+gt_strsX = readRDS(fs::path(data_dir, 'str_gts/all_repcn_proc_nosegdup_nolowcr_segregX.rds'))
+write_csv(gt_strsX, '../outs/all_repcn_proc_nosegdup_nolowcr_segregX.csv') # keep a csv version
+
+gt_strsY = readRDS(fs::path(data_dir, 'str_gts/all_repcn_proc_nosegdup_nolowcr_segregY.rds'))
+write_csv(gt_strsY, '../outs/all_repcn_proc_nosegdup_nolowcr_segregY.csv') # keep a csv version
+
 gtloc_per_strain = gt_strs %>%
   summarise(across(.cols = c(matches('BXD'), C57BL, DBA), 
                    .fns = list(ngt = ~sum(!is.na(.x)),
