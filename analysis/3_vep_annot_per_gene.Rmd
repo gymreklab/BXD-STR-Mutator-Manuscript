@@ -62,7 +62,7 @@ ci_lo = as.double(qtl_ci['ci_lo']); ci_hi = as.double(qtl_ci['ci_hi'])
 		mart = e102) %>% as_tibble
 
 	# rename
-	embl_genes = embl_genes %>% rename(all_of(attr_to_get))
+	embl_genes = embl_genes %>% dplyr::rename(all_of(attr_to_get))
 
 	# remove extra text from gene description
 	embl_genes = embl_genes %>%
@@ -99,7 +99,7 @@ ci_lo = as.double(qtl_ci['ci_lo']); ci_hi = as.double(qtl_ci['ci_hi'])
 		mart = e102) %>% as_tibble
 
     # rename columns
-    tx_info = tx_info %>% rename(all_of(attr_to_get))
+    tx_info = tx_info %>% dplyr::rename(all_of(attr_to_get))
     tx_info = tx_info %>% mutate(chr = str_c('chr', chr))
     
 	# convert position
@@ -118,7 +118,7 @@ ci_lo = as.double(qtl_ci['ci_lo']); ci_hi = as.double(qtl_ci['ci_hi'])
 
 	# format tsl column
 	tx_supp = tx_supp %>% 
-		rename(all_of(attr_to_get)) %>%
+		dplyr::rename(all_of(attr_to_get)) %>%
 		mutate(tsl = str_replace(tsl, ' \\(.*\\)$', '') %>% if_else(. == '', NA_character_, .)) %>%
 		arrange(tsl) %>%
 		mutate(tsl = fct_inorder(tsl))
@@ -393,11 +393,11 @@ ci_lo = as.double(qtl_ci['ci_lo']); ci_hi = as.double(qtl_ci['ci_hi'])
 		print(sprintf('Processing: %s', .x$loc_type))
 
 		# write a temporary file
-		tmp_file = path(out_dir, str_c(.x$loc_type, '_loci'))
+		tmp_file = fs::path(out_dir, str_c(.x$loc_type, '_loci'))
 		write_tsv(.x$loci %>% distinct(chr, pos, end), tmp_file, col_names = FALSE)
 
 		# run query
-		out_file = path(out_dir, str_c(.x$loc_type, '_gts.tsv')); redo = FALSE
+		out_file = fs::path(out_dir, str_c(.x$loc_type, '_gts.tsv')); redo = FALSE
 		if (!file_exists(out_file) | redo) {
 			if (.x$loc_type == 'str') {
 				cmd = sprintf("bcftools query -H -f '%%CHROM\t%%POS\t%%INFO/END[\t%%GT]\n' %s -R %s > %s", 
@@ -420,7 +420,7 @@ ci_lo = as.double(qtl_ci['ci_lo']); ci_hi = as.double(qtl_ci['ci_hi'])
 			# run the locus pull
 			system(cmd, intern = TRUE)
 		}
-     
+
 		# read precomputed file
 		res = read_tsv(out_file, col_types = cols(.default = 'c'))
 
@@ -428,7 +428,7 @@ ci_lo = as.double(qtl_ci['ci_lo']); ci_hi = as.double(qtl_ci['ci_hi'])
 		print(res)
 		res = res %>% rename_all(~str_replace(.x, '\\[.*\\]', '') %>% str_replace('# ', '') %>% str_replace(':GT', '')) %>%
 		  mutate(across(c(POS, END), as.integer)) %>%
-			rename(chr = CHROM, pos = POS, end = END)
+			dplyr::rename(chr = CHROM, pos = POS, end = END)
 
 		# remove duplicates
 		res = res %>% distinct
@@ -495,7 +495,7 @@ ci_lo = as.double(qtl_ci['ci_lo']); ci_hi = as.double(qtl_ci['ci_hi'])
 	for (i in c('str', 'snp')) {
 		loci_gts[[i]] = loci_gts[[i]] %>%
 			left_join(strain_info %>% select(short_name, bxd_id), by = c('strain' = 'short_name')) %>%
-			select(!strain) %>% rename(strain = bxd_id)
+			select(!strain) %>% dplyr::rename(strain = bxd_id)
 	}
 
 	# recombine
@@ -511,7 +511,7 @@ ci_lo = as.double(qtl_ci['ci_lo']); ci_hi = as.double(qtl_ci['ci_hi'])
 		distinct(chr, pos, end, sv_type, strains) %>%
 		unnest(strains) %>%
 		mutate(gt = '1/1') %>%
-		rename(strain = strains) %>%
+		dplyr::rename(strain = strains) %>%
 		semi_join(loci_of_int %>% filter(loc_type == 'sv'), by = c('chr', 'pos', 'end')) %>%
 		complete(nesting(chr, pos, end, sv_type), strain = (loci_gts %>% pull(strain) %>% unique), fill = list(gt = '0/0')) %>%
 		mutate(loc_type = 'sv') %>%
@@ -628,7 +628,7 @@ ci_lo = as.double(qtl_ci['ci_lo']); ci_hi = as.double(qtl_ci['ci_hi'])
 		ungroup %>%
 		arrange(desc(n)) %>%
 		distinct(loc_type, loc_id, .keep_all = TRUE) %>%
-		rename(maj_af = freq) %>% 
+		dplyr::rename(maj_af = freq) %>% 
 		mutate(nonmaj_af = 1 - maj_af) %>%
 		select(loc_type, loc_id, tot_ac, maj_af, nonmaj_af)
 
@@ -744,7 +744,7 @@ FOR TABULAR DISPLAY
 		slice_min(n = 1, order_by = ord, with_ties = FALSE) %>%
 		ungroup %>%
 		left_join(vep_conseq %>% select(SO_term, severity), by = c('csq' = 'SO_term'))
-		conseq_split = conseq_split %>% distinct(Consequence, csq, severity) %>% rename(top_csq = csq)
+		conseq_split = conseq_split %>% distinct(Consequence, csq, severity) %>% dplyr::rename(top_csq = csq)
 
 	# function for splitting Consequence column, then reconcatenating
 	lvl_concat = function(comma_sep_vals) {
@@ -810,7 +810,7 @@ FOR TABULAR DISPLAY
 		values = c(list('ENSMUST00000185852')), 
 		mart = e102) %>% 
 		as_tibble %>%
-		rename(all_of(attr_to_get)) %>%
+		dplyr::rename(all_of(attr_to_get)) %>%
 		arrange(rank)
 ```
 
@@ -984,6 +984,7 @@ These are the filters that are used at various points on variant/feature pairs. 
 		mutate(Existing_variation = if_else(loc_id == 'chr13_92348038_92348424_DEL', ltr_lab, Existing_variation)) %>%
 		mutate(top_csq = recode(top_csq, 'missense_variant' = 'missense', 'splice_region_variant' = 'splice')) %>%
 		ggplot(aes(pos/1e6, -log10(p.value), color = IMPACT)) +
+	  geom_hline(aes(yintercept = lod_thresh), linetype = 'dashed') +
 		geom_point(data = ~.x %>% filter(IMPACT == 'MODIFIER')) + # make sure the MODIFIER points are underneath the other effects
 		geom_point(data = ~.x %>% filter(IMPACT != 'MODIFIER')) + 
 		geom_text_repel(data = ~.x %>% 
@@ -1073,7 +1074,7 @@ These are the filters that are used at various points on variant/feature pairs. 
 	# as a single table
 	ft = smry %>% flextable %>% merge_v(j = 1:10) %>% theme_box
 	ft
-	save_as_html(ft, path = path('../pdfs/', 'Suppl_Tbl_2.html'))
+	save_as_html(ft, path = fs::path('../pdfs/', 'Suppl_Tbl_2.html'))
 	# save_as_image(x = ft , path = path('../pdfs/', 'Suppl_Tbl_2.pdf'))
 
 ```
@@ -1086,7 +1087,7 @@ These are the filters that are used at various points on variant/feature pairs. 
     - `PASS_FILTER` LOD thresh
     - `PASS_FILTER` non-major al freq thresh
 
-```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE, results='asis'}
 
   dna_repair_genes = c('Xrcc4', 'Ssbp2', 'Msh3', 'Ccnh', 'Atg10')
 
@@ -1151,8 +1152,8 @@ These are the filters that are used at various points on variant/feature pairs. 
 			rotate(i = 2, j = 1:(dim(ft)[2]-1), rotation = "btlr", align = 'bottom', part = "header") %>%
 			align(align = "center", part = "all") %>%
 			font(fontname = 'Arial', part = "all") %>%
-			width(width = 0.1) %>%
-			width(width = 3.5, j = ncol(ft)) %>%
+			flextable::width(width = 0.1) %>%
+			flextable::width(width = 3.5, j = ncol(ft)) %>%
 			align(align = 'left', j = ncol(ft)) %>%
 			valign(i = 2, j = dim(ft)[2], valign = 'bottom', part = 'header') %>%
 			bg(bg = bg_col, i = hlight_rows) %>%
@@ -1169,10 +1170,343 @@ These are the filters that are used at various points on variant/feature pairs. 
 		return(list(ft_obj = ft_obj, smry = smry))
 	}
 	
+	
 	ret = var_scan_tbl(redux_vep_annot)
 	ret$ft_obj
 	ret$smry
-	ret$ft_obj %>% save_as_html(path = path('../pdfs/', 'Suppl_Tbl_1.html'))
+	ret$ft_obj %>% save_as_html(path = fs::path('../pdfs/', 'Suppl_Tbl_1.html'))
 	# save_as_image(x = ret$ft_obj , path = path('../pdfs/', 'Suppl_Tbl_1.pdf'))
+```
 
+## p-val by gene and position
+
+```{r echo=TRUE, fig.width = 16, fig.height = 8, fig.align = 'center', cache = TRUE, eval = TRUE}
+	gene_ord = gene_info %>% arrange(gene_pos) %>% pull(gene_name) %>% keep(~.x %in% (to_plt %>% pull(SYMBOL) %>% unique))
+	p = to_plt %>% 
+		mutate(SYMBOL = fct_relevel(SYMBOL, gene_ord)) %>%
+		ggplot() +
+		geom_point(data = ~.x %>% filter(IMPACT == 'MODIFIER'),
+			   aes(pos/1e6, -log10(p.value)), color = 'gray70') +
+		geom_point(data = ~.x %>% filter(IMPACT != 'MODIFIER'),
+			   aes(pos/1e6, -log10(p.value), color = IMPACT)) +
+		scale_x_continuous(breaks = scales::pretty_breaks(n = 2)) + 
+		scale_color_brewer(palette = 'Dark2', guide = guide_legend(nrow = 1, title = NULL)) + 
+		facet_wrap(~SYMBOL, scales = 'free_x', nrow = 3) + 
+		theme_half_open() +
+		theme(legend.position = 'bottom',
+			  legend.text = element_text(size = 8),
+			  axis.title.x = element_blank()
+		)
+	p
+	ggsave('test.pdf', p, w = 14, h = 10)
+
+```
+
+# Supplementary figure VARSEL
+
+#. `filter1 & filter2`
+#. LOD and non-major allele thresholds shown
+#. Rare variants (< non-major al freq thresh) as hollow shapes
+
+```{r echo=TRUE, fig.width = 9, fig.height = 8, fig.align = 'center', cache = TRUE, eval = TRUE}
+	loc_types = c('str', 'snp', 'sv')
+	to_plt = redux_vep_annot %>%
+		filter(loc_type %in% loc_types) %>%
+		# old filter
+		# filter(IMPACT %in% c('HIGH', 'MODERATE', 'LOW') | 
+		#    ( IMPACT == 'MODIFIER' & (!Consequence %in% desel_conseq) )) %>%
+		# old filter
+		# filter(BIOTYPE == 'protein_coding') %>%
+		reduce_for_plt %>%
+		# arrange(IMPACT) %>%
+		# distinct(loc_type, chr, pos, end, SYMBOL, .keep_all = TRUE) %>%
+		# left_join(assoc_test, by = c('loc_type', 'chr', 'pos', 'end')) %>%
+		left_join(assoc_test, by = c('loc_type', 'loc_id')) %>%
+		filter(!is.na(p.value)) %>%
+		mutate(pass_filter = -log10(p.value) >= lod_thresh & nonmaj_af >= nonmaj_af_thresh)
+	p1 = to_plt %>%
+		mutate(rare = nonmaj_af < nonmaj_af_thresh) %>%
+		ggplot(aes(pos/1e6, -log10(p.value), color = IMPACT, shape = rare)) +
+		geom_point(data = ~.x %>% filter(IMPACT == 'MODIFIER')) + # make sure the MODIFIER points are underneath the other effects
+		geom_point(data = ~.x %>% filter(IMPACT != 'MODIFIER')) + 
+		geom_hline(yintercept = lod_thresh, linetype = 'dashed') + 
+		# geom_text(data = ~tibble(n = .x %>% distinct(loc_type, chr, pos, end) %>% nrow),
+		geom_text(data = ~tibble(n = .x %>% distinct(loc_type, loc_id) %>% nrow),
+			  aes(label = scales::comma(n)), x = Inf, y = Inf, hjust = 'inward', vjust = 'inward', inherit.aes = FALSE) + 
+		scale_color_manual(values = c('HIGH' = '#f03b20', 'MODERATE' = '#2c7fb8' , 'LOW' = '#31a354', 'MODIFIER' = 'gray70')) +
+		scale_shape_manual(values = c(`TRUE` = 1, `FALSE` = 19)) +
+		theme_half_open() +
+		theme(legend.position = 'right',
+		  panel.spacing = unit(0, 'lines')) +
+		labs(x = 'Mb')
+	p2 = al_freq %>%
+		# semi_join(to_plt, by = c('loc_type', 'chr', 'pos', 'end')) %>%
+		semi_join(to_plt, by = c('loc_type', 'loc_id')) %>%
+		ggplot(aes(nonmaj_af)) + 
+		geom_histogram(position = 'stack', bins = 100) + 
+		geom_vline(xintercept = 0.15, linetype = 'dashed') + 
+		# geom_text(data = ~tibble(n = .x %>% distinct(loc_type, chr, pos, end) %>% nrow),
+		geom_text(data = ~tibble(n = .x %>% distinct(loc_type, loc_id) %>% nrow),
+			  aes(label = scales::comma(n)), x = Inf, y = Inf, hjust = 'inward', vjust = 'inward') + 
+		theme_half_open() +
+		labs(x = 'non-major allele freq', y = '# loci')
+	p3 = to_plt %>% 
+		mutate(SYMBOL = fct_relevel(SYMBOL, gene_ord)) %>%
+		filter(SYMBOL %in% c('Msh3', 'Atg10', 'Ssbp2', 'Xrcc4', 'Ccnh', 'Cmya5', 'Zcchc9')) %>%
+		ggplot() +
+		geom_point(data = ~.x %>% filter(IMPACT == 'MODIFIER'),
+			   aes(pos/1e6, -log10(p.value)), color = 'gray70') +
+		geom_point(data = ~.x %>% filter(IMPACT != 'MODIFIER'),
+			   aes(pos/1e6, -log10(p.value), color = IMPACT)) +
+		scale_x_continuous(breaks = scales::pretty_breaks(n = 2)) + 
+		scale_color_manual(values = c('HIGH' = '#f03b20', 'MODERATE' = '#2c7fb8' , 'LOW' = '#31a354', 'MODIFIER' = 'gray70')) +
+		facet_wrap(~SYMBOL, scales = 'free_x', nrow = 3) + 
+		theme_half_open() +
+		theme(legend.position = 'bottom',
+			  legend.text = element_text(size = 8),
+			  axis.title.x = element_blank()
+		)
+	p = plot_grid(
+		plot_grid(p1, p2, nrow = 1, rel_widths = c(1, 0.5), axis = 'bt', align = 'h', labels = c('A', 'B')),
+		p3, ncol = 1, rel_heights = c(0.6, 1), labels = c('', 'C')
+	)
+	p
+	#ggsave('test.pdf', p, w = 9, h = 8)
+
+	#
+	#ggsave(path(plot_dir, 'Suppl_Fig_6.pdf'), p, w = 9, h = 8)
+	ggsave(fs::path('../pdfs/', 'Suppl_Fig_9.pdf'), p, w = 9, h = 8)
+
+```
+
+# Supplementary Fig MSH3 VARS
+
+#. May not be needed if info moved to main figure 3
+
+```{r echo=TRUE, fig.width = 12, fig.height = 12, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# function for plotting a variant impact view for a single gene
+	variant_combo_plot = function(to_plt, gene, xlims = NULL, impacts = c('HIGH', 'MODERATE', 'LOW', 'MODIFIER'), label_locus = FALSE, loc_types = c('str', 'snp', 'sv'), plt_title = '') {
+		if (is.null(xlims)) {
+			xlims = tx_info %>% filter(gene_name == gene) %>% summarise(xlims = c(min(tx_pos), max(tx_end))) %>% pull(xlims)
+		}
+		p1 = tx_info %>%
+			filter(gene_name == gene) %>%
+			arrange(tx_type) %>% 
+			mutate(tx_id = fct_inorder(tx_id)) %>%
+			ggplot() +
+			geom_tile(data = ~.x %>% distinct(tx_id, exon_pos, exon_end),
+				  aes(width = (exon_end - exon_pos), y = tx_id, x = (exon_pos + exon_end)/2), height = 0.9, fill = NA, color = 'black') +
+			geom_tile(data = ~.x %>% distinct(tx_id, cds_pos, cds_end) %>% filter(!is.na(cds_pos)),
+				  aes(width = (cds_end - cds_pos), y = tx_id, x = (cds_pos + cds_end)/2), height = 0.9) +
+			geom_tile(data = ~.x %>% distinct(tx_id, tx_pos, tx_end, tx_type),
+				  aes(width = (tx_end - tx_pos), y = tx_id, x = (tx_pos + tx_end)/2, fill = tx_type), height = 0.1) +
+			coord_cartesian(xlim = xlims) + 
+			scale_fill_brewer(palette = 'Dark2') + 
+			theme_half_open() +
+			theme(
+				legend.position = 'none',
+				axis.title.y = element_blank(), 
+				plot.title = element_text(size = 6, hjust = 0.5)) %>%
+			labs(x = 'pos', title = plt_title)
+		p2 = to_plt %>% 
+			filter(loc_type %in% loc_types) %>%
+			filter(SYMBOL == gene) %>%
+			filter(IMPACT %in% impacts) %>%
+			ggplot(aes(pos/1e6, -log10(p.value), color = IMPACT, shape = rare)) +
+			geom_point(data = ~.x %>% filter(IMPACT == 'MODIFIER')) + # make sure the MODIFIER points are underneath the other effects
+			geom_point(data = ~.x %>% filter(IMPACT != 'MODIFIER')) + 
+			scale_color_manual(values = c('HIGH' = '#f03b20', 'MODERATE' = '#2c7fb8' , 'LOW' = '#31a354', 'MODIFIER' = 'gray70')) +
+			scale_shape_manual(values = c(`TRUE` = 1, `FALSE` = 19)) +
+			coord_cartesian(xlim = xlims) + 
+			theme_half_open() +
+			theme(legend.position = 'bottom') %>%
+			labs(x = 'Mb')
+		if (label_locus) {
+			p2 = p2 + geom_text_repel(aes(label = locus), max.overlaps = Inf, min.segment.length = 0)
+		}
+		p = plot_grid(p1, p2, ncol = 1, axis = 'lr', align = 'v')
+		p
+	}
+	  
+	p1 = variant_combo_plot(top_genes_data, 'Msh3')
+	p2 = variant_combo_plot(top_genes_data, 'Msh3', xlims = c(92.344, 92.352))
+	p = plot_grid(p1, p2, nrow = 2, labels = c('A', 'B'))
+	p
+	ggsave('test.pdf', p, w = 12, h = 12)
+	
+	# figure print
+	ggsave(fs::path('../pdfs/', 'Suppl_Fig_13.pdf'), p, w = 12, h = 12)
+```
+
+
+# Load SV data
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+  sv_data = readRDS('../data/vep/sv_data.rds')
+
+	# extract data objects
+	locs_data = sv_data$locs_data
+
+	# convert coordinates
+	locs_data = locs_data %>% mutate(across(c(pos, end, sv_size), ~.x/1e6))
+
+	# extract the REF/ALT for each SV
+	dkeys = sv_data$dkeys
+```
+
+# Group nearby svs together to aid in visualization
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	assign_grps = function(data) {
+		grps_from_olap = function(is_olap) {
+			curr = 1
+			grps = c(curr)
+			for (i in 2:length(is_olap)) {
+			if (!is_olap[i]) curr = curr + 1
+			grps = c(grps, curr)
+			}
+			return(grps)
+		}
+		data = data %>%
+			group_by(sv_type) %>%
+			arrange(chr, sv_type, pos, end, .by_group = TRUE) %>%
+			mutate(is_olap = (pos <= lag(end) | pos <= lag(end, 2) | pos <= lag(end, 3) | pos <= lag(end, 4)) %>% replace_na(FALSE)) %>%
+			mutate(grp = grps_from_olap(is_olap)) %>%
+			ungroup %>%
+			select(!is_olap)
+	}
+	locs_data = locs_data %>% assign_grps
+
+	# check
+	# locs_data %>% count(grp)
+```
+
+# Thresholds
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	lod_thresh = -log10(0.0005) 
+	nonmaj_af_thresh = 0.15
+```
+
+# Assign variants to genes
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# define genes
+	genes = c('Msh3', 'Xrcc4', 'Ssbp2', 'Ccnh', 'Atg10') %>% set_names(.)
+
+	# split variants by gene
+	vars_by_gene = map_df(genes, function(gene) {
+		xlims = tx_info %>% 
+			filter(gene_name == gene) %>%
+			select(tx_pos, tx_end) %>%
+			gather(var, val) %>% pull(val) %>% range
+		locs_data %>% 
+			filter(pos >= xlims[1], end <= xlims[2]) %>%
+			mutate(across(c(pos, end, sv_size), ~.x*1e6)) %>% 
+			mutate(gene_name = gene)
+	})
+
+	# check that 1 variant per gene
+	# vars_by_gene %>%
+	# 	distinct(uid, gene_name) %>%
+	# 	count(uid) %>% pull(n) %>% unique
+
+	# add a filter
+	vars_by_gene_filt = vars_by_gene %>% filter(n_strains > 1, sv_size > 50)
+```
+# Aggregate LOD and nonmaj_af by SV group
+
+#. Otherwise nonmaj_af fraction may be undercounted
+#. `grp` is variant group
+
+```{r echo=TRUE, fig.width = 16, fig.height = 5, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# function from previous scripts for reducing annotation data to top consequence
+	reduce_for_plt = function(data) {
+		data %>%
+			left_join(conseq_split, by = 'Consequence') %>%
+			arrange(severity) %>%
+			distinct(loc_type, loc_id, SYMBOL, Feature, IMPACT, .keep_all = TRUE) %>%
+			arrange(IMPACT) %>%
+			distinct(loc_type, loc_id, SYMBOL, Feature, .keep_all = TRUE) %>%
+			distinct(loc_type, loc_id, SYMBOL, .keep_all = TRUE)
+	}
+
+	vars_by_gene_agg = vars_by_gene_filt %>%
+		mutate(loc_id = sprintf('%s_%d_%d_%s', chr, pos, end, sv_type)) %>%
+		mutate(locus = sprintf('%s:%d-%d', chr, pos, end)) %>%
+		left_join(assoc_test %>% select(loc_id, p.value), by = 'loc_id') %>%
+		left_join(redux_vep_annot %>%
+					reduce_for_plt %>% 
+					select(loc_id, IMPACT, top_csq), 
+				  by = 'loc_id') %>%
+		mutate(LOD = -log10(p.value)) %>%
+		group_by(gene_name, sv_type, grp) %>%
+		summarise(
+			# calc
+			medi_lod = median(LOD, na.rm = TRUE),
+			sd_lod = sd(LOD, na.rm = TRUE),
+			medi_size = median(sv_size, na.rm = TRUE),
+			sd_size = sd(sv_size, na.rm = TRUE),
+			n_strains = sum(n_strains),
+			nonmaj_af = n_strains/152,
+			locus = locus %>% unique %>% str_c(collapse = ', '),
+			top_csq = top_csq %>% unique %>% str_c(collapse = ', '),
+			IMPACT = IMPACT %>% unique %>% str_c(collapse = ', '),
+			.groups = 'drop'
+		) %>%
+		mutate(across(c(sd_lod, sd_size), ~replace_na(.x, 0)))
+	vars_by_gene_agg
+```
+
+# Supplementary table X
+
+#. Apply the `lod_thresh` and `nonmaj_af_thresh` thresholds to this
+
+```{r echo=TRUE, fig.width = 16, fig.height = 5, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# functions for table printing
+	print_range_i = function(x) {
+		if (length(x) == 1) {
+			as.character(x)
+		} else {
+			sprintf('%d (+/-%0.2f)', median(x) %>% round, sd(x))
+		}
+	}
+	print_range_f = function(x) {
+		if (length(x) == 1) {
+			sprintf('%0.2f', x)
+		} else {
+			sprintf('%0.2f (+/-%0.2f)', median(x) %>% round, sd(x))
+		}
+	}
+
+	# generate summary table
+	smry_tbl = vars_by_gene_agg %>%
+		filter(medi_lod >= lod_thresh, nonmaj_af >= nonmaj_af_thresh) %>%
+		# make variant ordering sequential
+		group_by(gene_name) %>%
+		arrange(gene_name, desc(medi_lod)) %>%
+		mutate(variant = grp %>% as.character %>% fct_inorder %>% as.integer) %>%
+		ungroup %>%
+		mutate(
+			# display
+			sv_size_bp = sprintf('%0.2f (+/-%0.2f)', medi_size, sd_size),
+			LOD = sprintf('%0.2f (+/-%0.2f)', medi_lod, sd_lod),
+			nonmaj_af = sprintf('%0.2f', nonmaj_af)
+		) %>%
+		select(gene_name, sv_type, variant, locus, sv_size_bp, n_strains, LOD, top_csq, IMPACT)
+
+	# turn into flextable
+	ft = smry_tbl %>%
+		flextable %>%
+		theme_box %>%
+		merge_v(j = c(1,3:6)) %>%
+		flextable::width(j = 4, 4) %>%
+		flextable::width(j = c(5, 7), 1.4)
+
+	ft
+    save_as_html(ft, path = fs::path('../pdfs/', 'Suppl_Tbl_4.html'))
+
+	# debug
+	# redux_vep_annot %>% 
+	# 	filter(loc_id == 'chr13_91700623_91700685_INS')
 ```

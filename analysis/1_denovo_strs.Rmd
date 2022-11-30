@@ -43,10 +43,10 @@ h6 {font-size: 0.75em}
 
 	data_dir = '../data/'
 	
-	denovo_strs = read_csv('../outs/denovo_strs_filtered.csv')
-	strain_info = read_csv('../outs/strain_info.csv')
-  gtloc_per_strain = read_csv('../outs/gtloc_per_strain.csv')
-  motif_info = read_csv('../outs/motif_info.csv')
+	denovo_strs = readr::read_csv('../outs/denovo_strs_filtered.csv')
+	strain_info = readr::read_csv('../outs/strain_info.csv')
+  gtloc_per_strain = readr::read_csv('../outs/gtloc_per_strain.csv')
+  motif_info = readr::read_csv('../outs/motif_info.csv')
 ```
 
 # Total number of mutated loci
