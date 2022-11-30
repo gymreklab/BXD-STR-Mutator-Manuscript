@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Compute other stats on BXD files
+# Compute other stats on BXD files (run on snorlax)
 
 ############## Reference TR set #################
 REFSTRS=/gymreklab-tscc/mikhail/090520_unified_workflow/data/ref/str_regions.bed
