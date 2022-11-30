@@ -119,6 +119,7 @@ h6 {font-size: 0.75em}
 	pheno_vals = all_phenos %>% 
 	  filter(min_pts_per_phe == 10, max_denovo_strains_per_loc == 10, motif_len == '4') %>%
 	  select(strain, motif_len, pheno, n, metric)
+	write.csv(pheno_vals, '../outs/pheno_vals_tetra.csv')
 ```
 
 
@@ -180,7 +181,7 @@ h6 {font-size: 0.75em}
 				# left_join(snp_phys_map %>% select(marker, chr, pos, end), by = 'marker')
 				separate('marker', c('chr', 'pos', 'end'), convert = TRUE)
 		}, .id = 'metric')
-		write.csv('../outs/final_qtl_res.csv')
+		write.csv(final_qtl_res, '../outs/final_qtl_res.csv')
 		# Plot QTL signal for all phenotypes
 		p = final_qtl_res %>%
 		arrange(match(metric, names(phenos))) %>%
@@ -220,7 +221,7 @@ h6 {font-size: 0.75em}
 			legend.position = 'top'
 		)
 		p
-		ggsave(fs::path('pdfs', 'Fig2_GWScan.pdf'), p, w = 6, h = 4)
+		ggsave(fs::path('../pdfs/', 'Fig2_GWScan.pdf'), p, w = 6, h = 4)
 ```
 
 # GW scan all phenotypes with loc/strain filtering - TETRA
@@ -281,7 +282,7 @@ h6 {font-size: 0.75em}
 				# left_join(snp_phys_map %>% select(marker, chr, pos, end), by = 'marker')
 				separate('marker', c('chr', 'pos', 'end'), convert = TRUE)
 		}, .id = 'metric')
-		write.csv('../outs/final_qtl_res_tetra.csv')
+		write.csv(final_qtl_res_tetra, '../outs/final_qtl_res_tetra.csv')
 		# Plot QTL signal for all phenotypes
 		p = final_qtl_res_tetra %>%
 		arrange(match(metric, names(phenos))) %>%
@@ -321,7 +322,7 @@ h6 {font-size: 0.75em}
 			legend.position = 'top'
 		)
 		p
-		ggsave(fs::path('pdfs', 'Fig2_GWScan-Tetra.pdf'), p, w = 6, h = 4)
+		ggsave(fs::path('../pdfs/', 'Fig2_GWScan-Tetra.pdf'), p, w = 6, h = 4)
 ```
 # Visualize scan sensitivity results %expanded
 
@@ -373,7 +374,7 @@ perc_expand_final_qtl = all_phenos %>%
 				qtl_res = as.data.frame(qtl_res) %>%
 					rownames_to_column(var = 'marker') %>%
 					as_tibble %>%
-					rename(LOD = pheno) %>%
+					dplyr::rename(LOD = pheno) %>%
 					mutate(lod_thresh = quantile(perm_res[,'pheno'], probs = 1-a_thresh, names = FALSE)) %>%
 					# left_join(snp_phys_map %>% select(marker, chr, pos, end), by = 'marker')
 					separate('marker', c('chr', 'pos', 'end'), convert = TRUE)
@@ -445,7 +446,7 @@ perc_expand_final_qtl = all_phenos %>%
 	})
 	p = by_chrom[[1]]
 	p
-	ggsave(fs::path('pdfs', 'Suppl_FigSensitivityScan.pdf'), p, w = 16, h = 16)
+	ggsave(fs::path('../pdfs/', 'Suppl_FigSensitivityScan.pdf'), p, w = 16, h = 16)
 ```
 
 # Visualize %expanded by motif length (no filtering)
@@ -476,7 +477,7 @@ perc_expand_final_qtl = all_phenos %>%
 			legend.position = 'top'
 		)
 	p
-	ggsave(fs::path('pdfs', 'Suppl_FigPercExpandedDistribution.pdf'), p, w = 6, h = 4)
+	ggsave(fs::path('../pdfs/', 'Suppl_FigPercExpandedDistribution.pdf'), p, w = 6, h = 4)
 ```
 
 # Visualize QTL signal by epoch
@@ -534,14 +535,14 @@ perc_expand_by_epoch_final = epoch_grps %>%
 				qtl_res = as.data.frame(qtl_res) %>%
 					rownames_to_column(var = 'marker') %>%
 					as_tibble %>%
-					rename(LOD = pheno) %>%
+					dplyr::rename(LOD = pheno) %>%
 					mutate(lod_thresh = quantile(perm_res[,'pheno'], probs = 1-a_thresh, names = FALSE)) %>%
 					# left_join(snp_phys_map %>% select(marker, chr, pos, end), by = 'marker')
 					separate('marker', c('chr', 'pos', 'end'), convert = TRUE)
 				# output
 				return(qtl_res)
 			}, .id = 'epoch_grp')
-  write.csv('../outs/perc_expand_by_epoch_final.csv')
+  write.csv(perc_expand_by_epoch_final, '../outs/perc_expand_by_epoch_final.csv')
 	p = perc_expand_by_epoch_final %>%
 		mutate(epoch_grp = fct_relevel(epoch_grp, c('all', '1', '2', '3a', '3b', '4-7', '2,3b'))) %>%
 		filter(epoch_grp != '2,3b') %>%
@@ -568,7 +569,95 @@ perc_expand_by_epoch_final = epoch_grps %>%
 			legend.position = 'none'
 		)
 	p
-	ggsave(path('pdfs/', 'Suppl_FigEpochScan.pdf'), p, w = 16, h = 8)
+	ggsave(fs::path('../pdfs/', 'Suppl_FigEpochScan.pdf'), p, w = 16, h = 8)
+```
+
+```{r echo=TRUE, fig.width = 16, fig.height = 8, fig.align = 'center', cache = TRUE, eval = TRUE}
+# run QTL mapping separately for different epochs
+epoch_grps = strain_info %>%
+		select(strain = bxd_id, off_epoch) %>%
+		mutate(off_epoch = str_replace(off_epoch, 'epoch_', '')) %>%
+		filter(off_epoch != 'founder') %>%
+		mutate(epoch_grp = if_else(off_epoch %in% 4:7, '4-7', off_epoch))
+# add the 2+3a group
+epoch_grps = epoch_grps %>%
+		bind_rows(epoch_grps %>% filter(epoch_grp %in% c('2', '3b')) %>% mutate(epoch_grp = '2,3b')) %>%
+		bind_rows(epoch_grps %>% mutate(epoch_grp = 'all'))
+	
+perc_expand_by_epoch_tetra_final = epoch_grps %>%
+			split(.$epoch_grp) %>%
+			map('strain') %>%
+			map_df(function(strains) {
+				# transform the 
+				this_phenos = all_phenos %>%
+				  filter(metric == '% expanded') %>%
+					filter(min_pts_per_phe == 10, 
+						   max_denovo_strains_per_loc == 10,
+						   motif_len == 4) %>%
+					filter(strain %in% strains) %>%
+					select(strain, pheno) %>% 
+					column_to_rownames(var = 'strain') %>% as.matrix
+				# get strains for which we actually have a phenotype
+				pheno_strains = row.names(this_phenos)
+				if (length(pheno_strains) < 5) return(NULL)
+				# subset snp probabilities and kinship matrices
+				this_probs = qtl_data$snp_probs[pheno_strains,]
+				this_kinship = qtl_data$snp_kinship[]
+				this_covar = strain_info %>% 
+					select(bxd_id, gen_inbreeding) %>% 
+					filter(bxd_id %in% pheno_strains) %>%
+					column_to_rownames(var = 'bxd_id') %>% as.matrix
+				# run qtl analysis
+				qtl_res = scan1(genoprobs = this_probs, 
+								pheno = this_phenos,
+								kinship = this_kinship,
+								addcovar = this_covar
+				)
+				perm_res = scan1perm(genoprobs = this_probs, 
+									 pheno = this_phenos,
+									 kinship = this_kinship,
+									 addcovar = this_covar,
+									 n_perm = n_permute
+				)
+				# combine
+				qtl_res = as.data.frame(qtl_res) %>%
+					rownames_to_column(var = 'marker') %>%
+					as_tibble %>%
+					dplyr::rename(LOD = pheno) %>%
+					mutate(lod_thresh = quantile(perm_res[,'pheno'], probs = 1-a_thresh, names = FALSE)) %>%
+					# left_join(snp_phys_map %>% select(marker, chr, pos, end), by = 'marker')
+					separate('marker', c('chr', 'pos', 'end'), convert = TRUE)
+				# output
+				return(qtl_res)
+			}, .id = 'epoch_grp')
+  write.csv(perc_expand_by_epoch_tetra_final, '../outs/perc_expand_by_epoch_tetra_final.csv')
+	p = perc_expand_by_epoch_tetra_final %>%
+		mutate(epoch_grp = fct_relevel(epoch_grp, c('all', '1', '2', '3a', '3b', '4-7', '2,3b'))) %>%
+		filter(epoch_grp != '2,3b') %>%
+		mutate(chr = fct_relevel(chr, str_sort(unique(chr), numeric = TRUE))) %>%
+		mutate(across(c(pos, end), ~.x/1e6)) %>%
+		ggplot(aes(pos, LOD, color = epoch_grp)) + 
+		geom_step() +
+		geom_hline(data = ~.x %>% distinct(epoch_grp, chr, lod_thresh),
+				   aes(yintercept = lod_thresh), linetype = 'dashed') + 
+		facet_grid(epoch_grp~chr, scales = 'free_x', switch = 'x') + 
+		scale_x_continuous(breaks = scales::breaks_pretty(n = 2), 
+						   guide = guide_axis(angle = 60)) +
+		scale_color_brewer(palette = 'Dark2') + 
+		# coord_cartesian(ylim = c(0, 4)) +
+		theme_half_open() +
+		theme(
+			panel.spacing.x = unit(0, 'pt'),
+			axis.title.x = element_blank(),
+			strip.placement = 'outside',
+			strip.text.y = element_text(angle = 0),
+			panel.border = element_rect(color = 'gray70'),
+			axis.text.x = element_blank(),
+			axis.ticks.x = element_blank(),
+			legend.position = 'none'
+		)
+	p
+	ggsave(fs::path('../pdfs/', 'Suppl_FigEpochScanTetra.pdf'), p, w = 16, h = 8)
 ```
 
 # Plot founder gt at locus vs. expansion propensity 
@@ -593,7 +682,7 @@ perc_exp_byhap = all_phenos %>%
 		left_join(strain_info %>% 
 				  mutate(off_epoch = recode(off_epoch, epoch_1b = 'epoch_1a', epoch_1c = 'epoch_1a')) %>%
 				  select(strain = bxd_id, off_epoch), by = 'strain') %>%
-		rename(perc_expand = pheno) %>%
+		dplyr::rename(perc_expand = pheno) %>%
 		left_join(fou_gt_at_peak %>% select(!marker), by = 'strain') %>%
 		arrange(desc(perc_expand)) %>%
 		select(strain, perc_expand, off_epoch, fou_gt, n)
@@ -615,7 +704,7 @@ p = perc_exp_byhap %>%
   theme_half_open() +
   ylab("Expansion propensity")
 p
-ggsave(path('pdfs/', 'Fig2_SignalByFounder.pdf'), p, w = 6, h = 8)
+ggsave(fs::path('../pdfs/', 'Fig2_SignalByFounder.pdf'), p, w = 6, h = 8)
 ```
 
 # Plot founder gt at locus vs. expansion propensity 
@@ -640,7 +729,7 @@ perc_exp_byhap = all_phenos %>%
 		left_join(strain_info %>% 
 				  mutate(off_epoch = recode(off_epoch, epoch_1b = 'epoch_1a', epoch_1c = 'epoch_1a')) %>%
 				  select(strain = bxd_id, off_epoch), by = 'strain') %>%
-		rename(perc_expand = pheno) %>%
+		dplyr::rename(perc_expand = pheno) %>%
 		left_join(fou_gt_at_peak %>% select(!marker), by = 'strain') %>%
 		arrange(desc(perc_expand)) %>%
 		select(strain, perc_expand, off_epoch, fou_gt, n)
@@ -662,7 +751,7 @@ p = perc_exp_byhap %>%
   theme_half_open() +
   ylab("Expansion propensity")
 p
-ggsave(path('pdfs/', 'Fig2_SignalByFounder.pdf'), p, w = 6, h = 8)
+ggsave(fs::path('../pdfs/', 'Fig2_SignalByFounder.pdf'), p, w = 6, h = 8)
 ```
 # Plot founder gt at locus vs. expansion propensity by epoch
 ```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
@@ -687,7 +776,18 @@ p = perc_exp_byhap %>%
 		) +
   ylab("Expansion propensity")
 p
-ggsave(path('pdfs/', 'Fig2_SignalByFounderByEpoch.pdf'), p, w = 16, h = 8)
+ggsave(fs::path('../pdfs/', 'Fig2_SignalByFounderByEpoch.pdf'), p, w = 16, h = 8)
+```
+# Proprotion test between B and D for epochs
+```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+x <- perc_exp_byhap %>% group_by(off_epoch)
+
+prop_test_tbl <- x %>% summarise(prop = prop.test(c(sum(perc_expand[fou_gt == "B"] * n[fou_gt == "B"]), sum(perc_expand[fou_gt == "D"] * n[fou_gt == "D"])), c(sum(n[fou_gt == "B"]), sum(n[fou_gt == "D"])))$p.value)
+
+prop_all <- perc_exp_byhap %>% summarise(prop = prop.test(c(sum(perc_expand[fou_gt == "B"] * n[fou_gt == "B"]), sum(perc_expand[fou_gt == "D"] * n[fou_gt == "D"])), c(sum(n[fou_gt == "B"]), sum(n[fou_gt == "D"])))$p.value)
+
+ prop_test_tbl <- rbind(prop_test_tbl, list('all', as.double(prop_all)))
+ prop_test_tbl
 ```
 
 # Plot founder gt at locus vs. contraction size
@@ -712,7 +812,7 @@ contradelta_exp_byhap = all_phenos %>%
 		left_join(strain_info %>% 
 				  mutate(off_epoch = recode(off_epoch, epoch_1b = 'epoch_1a', epoch_1c = 'epoch_1a')) %>%
 				  select(strain = bxd_id, off_epoch), by = 'strain') %>%
-		rename(cd = pheno) %>%
+		dplyr::rename(cd = pheno) %>%
 		left_join(fou_gt_at_peak %>% select(!marker), by = 'strain') %>%
 		arrange(desc(cd)) %>%
 		select(strain, cd, off_epoch, fou_gt, n)
@@ -748,6 +848,7 @@ p
 					.id = 'metric'
 					) %>% filter(metric == '% expanded')
 	qtl_ci
+	write.csv(qtl_ci, '../outs/qtl_ci.csv')
 	p = final_qtl_res %>%
 		mutate(chr = str_replace(chr, 'chr', '')) %>%
 		mutate(chr = fct_relevel(chr, str_sort(unique(chr), numeric = TRUE))) %>%
@@ -786,6 +887,7 @@ p
 					.id = 'metric'
 					) %>% filter(metric == '% expanded')
 	qtl_ci_tetra
+	write.csv(qtl_ci_tetra, '../outs/qtl_ci_tetra.csv')
 	p = final_qtl_res_tetra %>%
 		mutate(chr = str_replace(chr, 'chr', '')) %>%
 		mutate(chr = fct_relevel(chr, str_sort(unique(chr), numeric = TRUE))) %>%
