@@ -2,7 +2,9 @@
 
 Notebooks for generating figures and results are in the `analysis/` directory.
 
-### 1. `analysis/stats.sh` computes some general statistics
+### 1. `analysis/stats.sh` 
+
+Computes some general statistics:
 * Total number of TRs: 1,176,016
 * Total number of STRs: 1,154,738
 * Total number of VNTRs: 21,278
