@@ -79,7 +79,6 @@ h6 {font-size: 0.75em}
 
 #. Attach motif info to new variant str information
 #. Bundle epoch1b and epoch1c together with epoch1a
-#. Fix BXD029 gen_inbreeding
 
 ```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
 	# join motif length to new variant STRs (note: these are homozygous)
@@ -123,11 +122,14 @@ h6 {font-size: 0.75em}
 ```
 
 
-# GW scan all phenotypes with loc/strain filtering
+# GW scan all phenotypes with loc/strain filtering (preprocessing for fig. 2a)
 
 #. min_pts_per_phe == 10, max_denovo_strains_per_loc == 10
 
 ```{r fig.width = 16, fig.height = 8, fig.align = 'center', cache = TRUE, eval = TRUE}
+# how many snps total?
+numsnps = 0; for (chrom in 1:19) {numsnps = numsnps + length(qtl_data$snp_pmap[[chrom]])}
+print(paste("Total SNPs in scan ", numsnps))
 		# run QTL mapping using SNP founder states and final calculated phenotype values
 		# all chromosomes
 		a_thresh = 0.05
@@ -181,50 +183,12 @@ h6 {font-size: 0.75em}
 				# left_join(snp_phys_map %>% select(marker, chr, pos, end), by = 'marker')
 				separate('marker', c('chr', 'pos', 'end'), convert = TRUE)
 		}, .id = 'metric')
+		max_lod = max(final_qtl_res %>% filter(metric=="% expanded") %>% pull(LOD))
+		print(paste("Max LOD " , max_lod))
 		write.csv(final_qtl_res, '../outs/final_qtl_res.csv')
-		# Plot QTL signal for all phenotypes
-		p = final_qtl_res %>%
-		arrange(match(metric, names(phenos))) %>%
-		mutate(delta_dir = if_else(str_detect(metric, ' (expan|contr)$'),
-								   str_replace(metric, '.* (expan|contr)$', '\\1'), 
-								   'all')) %>%
-		mutate(metric = if_else(delta_dir != 'all', 
-								str_replace(metric, ' (expan|contr)$', ''),
-								metric)) %>%
-		mutate(metric = fct_inorder(metric)) %>%
-		# recode labels for final figure
-		mutate(metric = recode(metric, !!!c('% denovo' = 'mutation count', 
-											'delta (RU)' = 'expansion size', 
-											'% expanded' = 'expansion propensity'))) %>%
-		mutate(chr = str_replace(chr, 'chr', '')) %>%
-		mutate(chr = fct_relevel(chr, str_sort(unique(chr), numeric = TRUE))) %>%
-		# filter(metric %in% c('% denovo', '% expanded', 'delta (RU) expan')) %>%
-		mutate(across(c(pos, end), ~.x/1e6)) %>%
-		ggplot(aes(pos, LOD, color = delta_dir)) + 
-		geom_step() +
-		geom_hline(data = ~.x %>% distinct(metric, chr, lod_thresh, delta_dir),
-			   aes(yintercept = lod_thresh, color = delta_dir), linetype = 'dashed') + 
-		facet_grid(metric~chr, scales = 'free_x', switch = 'x') + 
-		scale_x_continuous(breaks = scales::breaks_pretty(n = 2), 
-						   guide = guide_axis(angle = 60)) +
-		scale_color_brewer(palette = 'Dark2', guide = guide_legend(title = NULL)) + 
-		# coord_cartesian(ylim = c(0, 4)) +
-		theme_half_open() +
-		theme(
-			panel.spacing.x = unit(0, 'pt'),
-			axis.title.x = element_blank(),
-			strip.placement = 'outside',
-			strip.text.y = element_text(angle = 90),
-			panel.border = element_rect(color = 'gray70'),
-			axis.text.x = element_blank(),
-			axis.ticks.x = element_blank(),
-			legend.position = 'top'
-		)
-		p
-		ggsave(fs::path('../pdfs/', 'Fig2_GWScan.pdf'), p, w = 6, h = 4)
 ```
 
-# GW scan all phenotypes with loc/strain filtering - TETRA
+# GW scan all phenotypes with loc/strain filtering - TETRA (preprocessing for fig. 2a)
 
 #. min_pts_per_phe == 10, max_denovo_strains_per_loc == 10
 
@@ -282,49 +246,12 @@ h6 {font-size: 0.75em}
 				# left_join(snp_phys_map %>% select(marker, chr, pos, end), by = 'marker')
 				separate('marker', c('chr', 'pos', 'end'), convert = TRUE)
 		}, .id = 'metric')
+		max_lod = max(final_qtl_res_tetra %>% filter(metric=="% expanded") %>% pull(LOD))
+		print(paste("Max LOD " , max_lod))
 		write.csv(final_qtl_res_tetra, '../outs/final_qtl_res_tetra.csv')
-		# Plot QTL signal for all phenotypes
-		p = final_qtl_res_tetra %>%
-		arrange(match(metric, names(phenos))) %>%
-		mutate(delta_dir = if_else(str_detect(metric, ' (expan|contr)$'),
-								   str_replace(metric, '.* (expan|contr)$', '\\1'), 
-								   'all')) %>%
-		mutate(metric = if_else(delta_dir != 'all', 
-								str_replace(metric, ' (expan|contr)$', ''),
-								metric)) %>%
-		mutate(metric = fct_inorder(metric)) %>%
-		# recode labels for final figure
-		mutate(metric = recode(metric, !!!c('% denovo' = 'mutation count', 
-											'delta (RU)' = 'expansion size', 
-											'% expanded' = 'expansion propensity'))) %>%
-		mutate(chr = str_replace(chr, 'chr', '')) %>%
-		mutate(chr = fct_relevel(chr, str_sort(unique(chr), numeric = TRUE))) %>%
-		# filter(metric %in% c('% denovo', '% expanded', 'delta (RU) expan')) %>%
-		mutate(across(c(pos, end), ~.x/1e6)) %>%
-		ggplot(aes(pos, LOD, color = delta_dir)) + 
-		geom_step() +
-		geom_hline(data = ~.x %>% distinct(metric, chr, lod_thresh, delta_dir),
-			   aes(yintercept = lod_thresh, color = delta_dir), linetype = 'dashed') + 
-		facet_grid(metric~chr, scales = 'free_x', switch = 'x') + 
-		scale_x_continuous(breaks = scales::breaks_pretty(n = 2), 
-						   guide = guide_axis(angle = 60)) +
-		scale_color_brewer(palette = 'Dark2', guide = guide_legend(title = NULL)) + 
-		# coord_cartesian(ylim = c(0, 4)) +
-		theme_half_open() +
-		theme(
-			panel.spacing.x = unit(0, 'pt'),
-			axis.title.x = element_blank(),
-			strip.placement = 'outside',
-			strip.text.y = element_text(angle = 90),
-			panel.border = element_rect(color = 'gray70'),
-			axis.text.x = element_blank(),
-			axis.ticks.x = element_blank(),
-			legend.position = 'top'
-		)
-		p
-		ggsave(fs::path('../pdfs/', 'Fig2_GWScan-Tetra.pdf'), p, w = 6, h = 4)
 ```
-# Visualize scan sensitivity results %expanded
+
+# Visualize scan sensitivity results %expanded (Supp Figure 5)
 
 ## Min-points per phenotype and max strains per denovo filtering
 
@@ -446,10 +373,10 @@ perc_expand_final_qtl = all_phenos %>%
 	})
 	p = by_chrom[[1]]
 	p
-	ggsave(fs::path('../pdfs/', 'Suppl_FigSensitivityScan.pdf'), p, w = 16, h = 16)
+	ggsave(fs::path('../pdfs/', 'SuppFig5_SensitivityScan.pdf'), p, w = 16, h = 16)
 ```
 
-# Visualize %expanded by motif length (no filtering)
+# Visualize %expanded by motif length (no filtering) (Supp Figure 6)
 
 ```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
 	# visualize perc expanded. Note this is with *no filtering*
@@ -477,10 +404,10 @@ perc_expand_final_qtl = all_phenos %>%
 			legend.position = 'top'
 		)
 	p
-	ggsave(fs::path('../pdfs/', 'Suppl_FigPercExpandedDistribution.pdf'), p, w = 6, h = 4)
+	ggsave(fs::path('../pdfs/', 'SuppFig6_PercExpByPeriod.pdf'), p, w = 6, h = 4)
 ```
 
-# Visualize QTL signal by epoch
+# Visualize QTL signal by epoch (Supp Figure 7)
 
 epoch3b has the most power to resolve association, but likely present in all strains
 
@@ -543,33 +470,6 @@ perc_expand_by_epoch_final = epoch_grps %>%
 				return(qtl_res)
 			}, .id = 'epoch_grp')
   write.csv(perc_expand_by_epoch_final, '../outs/perc_expand_by_epoch_final.csv')
-	p = perc_expand_by_epoch_final %>%
-		mutate(epoch_grp = fct_relevel(epoch_grp, c('all', '1', '2', '3a', '3b', '4-7', '2,3b'))) %>%
-		filter(epoch_grp != '2,3b') %>%
-		mutate(chr = fct_relevel(chr, str_sort(unique(chr), numeric = TRUE))) %>%
-		mutate(across(c(pos, end), ~.x/1e6)) %>%
-		ggplot(aes(pos, LOD, color = epoch_grp)) + 
-		geom_step() +
-		geom_hline(data = ~.x %>% distinct(epoch_grp, chr, lod_thresh),
-				   aes(yintercept = lod_thresh), linetype = 'dashed') + 
-		facet_grid(epoch_grp~chr, scales = 'free_x', switch = 'x') + 
-		scale_x_continuous(breaks = scales::breaks_pretty(n = 2), 
-						   guide = guide_axis(angle = 60)) +
-		scale_color_brewer(palette = 'Dark2') + 
-		# coord_cartesian(ylim = c(0, 4)) +
-		theme_half_open() +
-		theme(
-			panel.spacing.x = unit(0, 'pt'),
-			axis.title.x = element_blank(),
-			strip.placement = 'outside',
-			strip.text.y = element_text(angle = 0),
-			panel.border = element_rect(color = 'gray70'),
-			axis.text.x = element_blank(),
-			axis.ticks.x = element_blank(),
-			legend.position = 'none'
-		)
-	p
-	ggsave(fs::path('../pdfs/', 'Suppl_FigEpochScan.pdf'), p, w = 16, h = 8)
 ```
 
 ```{r echo=TRUE, fig.width = 16, fig.height = 8, fig.align = 'center', cache = TRUE, eval = TRUE}
@@ -657,10 +557,10 @@ perc_expand_by_epoch_tetra_final = epoch_grps %>%
 			legend.position = 'none'
 		)
 	p
-	ggsave(fs::path('../pdfs/', 'Suppl_FigEpochScanTetra.pdf'), p, w = 16, h = 8)
+	ggsave(fs::path('../pdfs/', 'SuppFig7_EpochScan-Tetra.pdf'), p, w = 16, h = 8)
 ```
 
-# Plot founder gt at locus vs. expansion propensity 
+# Plot founder gt at locus vs. expansion propensity (Figure 2b)
 ```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
 # founder genotypes at max LOD marker for %expanded 
 fou_gt_at_peak = maxmarg(qtl_data$snp_probs[,'13'], minprob = 0.5) %>% 
@@ -704,56 +604,10 @@ p = perc_exp_byhap %>%
   theme_half_open() +
   ylab("Expansion propensity")
 p
-ggsave(fs::path('../pdfs/', 'Fig2_SignalByFounder.pdf'), p, w = 6, h = 8)
+ggsave(fs::path('../pdfs/', 'Fig2b.pdf'), p, w = 6, h = 8)
 ```
 
-# Plot founder gt at locus vs. expansion propensity 
-```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
-# founder genotypes at max LOD marker for %expanded 
-fou_gt_at_peak = maxmarg(qtl_data$snp_probs[,'13'], minprob = 0.5) %>% 
-		.[[1]] %>%
-		as.data.frame %>%
-		rownames_to_column(var = 'strain') %>%
-		pivot_longer(cols = !strain, names_to = 'marker', values_to = 'fou_gt') %>%
-		semi_join(final_qtl_res %>% 
-				filter(metric == '% expanded') %>%
-				unite('marker', c('chr', 'pos', 'end')) %>%
-				slice_max(LOD, n = 1), by = 'marker') %>%
-		mutate(fou_gt = recode(fou_gt, `1` = 'B', `2` = 'D'),
-			   fou_gt = replace_na(fou_gt, 'miss'))
-# Get perc expanded and hap labels for each strain
-perc_exp_byhap = all_phenos %>% 
-  filter(min_pts_per_phe == 10, max_denovo_strains_per_loc == 10, motif_len == FINALML) %>%
-		    filter(metric == '% expanded') %>%
-		    filter(strain %in% strains) %>%
-		left_join(strain_info %>% 
-				  mutate(off_epoch = recode(off_epoch, epoch_1b = 'epoch_1a', epoch_1c = 'epoch_1a')) %>%
-				  select(strain = bxd_id, off_epoch), by = 'strain') %>%
-		dplyr::rename(perc_expand = pheno) %>%
-		left_join(fou_gt_at_peak %>% select(!marker), by = 'strain') %>%
-		arrange(desc(perc_expand)) %>%
-		select(strain, perc_expand, off_epoch, fou_gt, n)
-founder_colors = c(
-		'B' = 'red', 
-		'D' = 'blue'
-		)
-p = perc_exp_byhap %>%
-  ggplot(aes(fou_gt, perc_expand, color = fou_gt)) +
-  geom_quasirandom(dodge.width = 0.1, width=0.2, shape=21, groupOnX = TRUE) +
-  geom_boxplot(aes(group = fou_gt), 
-					 fill = 'white', alpha=0, 
-					 width = 0.2, outlier.shape = NA,
-					 position = position_dodge(width = 0.3)) +
-  scale_color_manual(
-			values = founder_colors,
-			guide = guide_legend(title = NULL, nrow = 1)
-		) + 
-  theme_half_open() +
-  ylab("Expansion propensity")
-p
-ggsave(fs::path('../pdfs/', 'Fig2_SignalByFounder.pdf'), p, w = 6, h = 8)
-```
-# Plot founder gt at locus vs. expansion propensity by epoch
+# Plot founder gt at locus vs. expansion propensity by epoch (Figure 2c)
 ```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
 p = perc_exp_byhap %>%
   mutate(off_epoch = str_replace(off_epoch, 'epoch_', '')) %>%
@@ -776,8 +630,9 @@ p = perc_exp_byhap %>%
 		) +
   ylab("Expansion propensity")
 p
-ggsave(fs::path('../pdfs/', 'Fig2_SignalByFounderByEpoch.pdf'), p, w = 16, h = 8)
+ggsave(fs::path('../pdfs/', 'Fig2c.pdf'), p, w = 16, h = 8)
 ```
+
 # Proprotion test between B and D for epochs
 ```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
 x <- perc_exp_byhap %>% group_by(off_epoch)
@@ -788,52 +643,6 @@ prop_all <- perc_exp_byhap %>% summarise(prop = prop.test(c(sum(perc_expand[fou_
 
  prop_test_tbl <- rbind(prop_test_tbl, list('all', as.double(prop_all)))
  prop_test_tbl
-```
-
-# Plot founder gt at locus vs. contraction size
-```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
-# founder genotypes at max LOD marker for %expanded 
-fou_gt_at_peak = maxmarg(qtl_data$snp_probs[,'13'], minprob = 0.5) %>% 
-		.[[1]] %>%
-		as.data.frame %>%
-		rownames_to_column(var = 'strain') %>%
-		pivot_longer(cols = !strain, names_to = 'marker', values_to = 'fou_gt') %>%
-		semi_join(final_qtl_res %>% 
-				filter(metric == "delta (RU) contr") %>%
-				unite('marker', c('chr', 'pos', 'end')) %>%
-				slice_max(LOD, n = 1), by = 'marker') %>%
-		mutate(fou_gt = recode(fou_gt, `1` = 'B', `2` = 'D'),
-			   fou_gt = replace_na(fou_gt, 'miss'))
-# Get perc expanded and hap labels for each strain
-contradelta_exp_byhap = all_phenos %>% 
-  filter(min_pts_per_phe == 10, max_denovo_strains_per_loc == 10, motif_len == FINALML) %>%
-		    filter(metric == "delta (RU) contr") %>%
-		    filter(strain %in% strains) %>%
-		left_join(strain_info %>% 
-				  mutate(off_epoch = recode(off_epoch, epoch_1b = 'epoch_1a', epoch_1c = 'epoch_1a')) %>%
-				  select(strain = bxd_id, off_epoch), by = 'strain') %>%
-		dplyr::rename(cd = pheno) %>%
-		left_join(fou_gt_at_peak %>% select(!marker), by = 'strain') %>%
-		arrange(desc(cd)) %>%
-		select(strain, cd, off_epoch, fou_gt, n)
-founder_colors = c(
-		'B' = 'red', 
-		'D' = 'blue'
-		)
-p = contradelta_exp_byhap %>%
-  ggplot(aes(fou_gt, cd, color = fou_gt)) +
-  geom_quasirandom(dodge.width = 0.1, width=0.2, shape=21, groupOnX = TRUE) +
-  geom_boxplot(aes(group = fou_gt), 
-					 fill = 'white', alpha=0, 
-					 width = 0.2, outlier.shape = NA,
-					 position = position_dodge(width = 0.3)) +
-  scale_color_manual(
-			values = founder_colors,
-			guide = guide_legend(title = NULL, nrow = 1)
-		) + 
-  theme_half_open() +
-  ylab("contract_delta_ru")
-p
 ```
 
 # Determine the QTL confidence interval - chr13 % expanded
@@ -848,33 +657,7 @@ p
 					.id = 'metric'
 					) %>% filter(metric == '% expanded')
 	qtl_ci
-	write.csv(qtl_ci, '../outs/qtl_ci.csv')
-	p = final_qtl_res %>%
-		mutate(chr = str_replace(chr, 'chr', '')) %>%
-		mutate(chr = fct_relevel(chr, str_sort(unique(chr), numeric = TRUE))) %>%
-		filter(chr == '13') %>%
-		mutate(across(c(pos, end), ~.x/1e6)) %>%
-		ggplot(aes(pos, LOD), by=metric) + 
-		geom_rect(aes(xmin = qtl_ci$ci_lo, xmax = qtl_ci$ci_hi, ymin = -Inf, ymax = Inf), fill = 'gray90') + 
-		geom_step() +
-		geom_hline(data = ~.x %>% distinct(metric, chr, lod_thresh),
-				   aes(yintercept = lod_thresh), linetype = 'dashed') +
-		facet_grid(metric~chr, scales = 'free_x') + 
-		scale_x_continuous(breaks = scales::breaks_width(width = 5), 
-						   guide = guide_axis(angle = 60)) +
-		theme_half_open() +
-		theme(
-			panel.spacing.x = unit(0, 'pt'),
-			axis.title.x = element_blank(),
-			strip.placement = 'outside',
-			strip.text.y = element_text(angle = 0),
-			panel.border = element_rect(color = 'gray70'),
-			# axis.text.x = element_blank(),
-			# axis.ticks.x = element_blank(),
-			legend.position = 'top'
-		)
-	p
-	
+	print(qtl_ci)
 ```
 
 #. Confidence interval for the QTL determined by the 1.5 LOD drop method - tetra
@@ -886,32 +669,6 @@ p
 					~.x %>% lod_int(map = qtl_data$snp_pmap, chr = '13', threshold = 5, drop = 1.5) %>% as_tibble, 
 					.id = 'metric'
 					) %>% filter(metric == '% expanded')
-	qtl_ci_tetra
+	print(qtl_ci_tetra)
 	write.csv(qtl_ci_tetra, '../outs/qtl_ci_tetra.csv')
-	p = final_qtl_res_tetra %>%
-		mutate(chr = str_replace(chr, 'chr', '')) %>%
-		mutate(chr = fct_relevel(chr, str_sort(unique(chr), numeric = TRUE))) %>%
-		filter(chr == '13') %>%
-		mutate(across(c(pos, end), ~.x/1e6)) %>%
-		ggplot(aes(pos, LOD), by=metric) + 
-		geom_rect(aes(xmin = qtl_ci_tetra$ci_lo, xmax = qtl_ci_tetra$ci_hi, ymin = -Inf, ymax = Inf), fill = 'gray90') + 
-		geom_step() +
-		geom_hline(data = ~.x %>% distinct(metric, chr, lod_thresh),
-				   aes(yintercept = lod_thresh), linetype = 'dashed') +
-		facet_grid(metric~chr, scales = 'free_x') + 
-		scale_x_continuous(breaks = scales::breaks_width(width = 5), 
-						   guide = guide_axis(angle = 60)) +
-		theme_half_open() +
-		theme(
-			panel.spacing.x = unit(0, 'pt'),
-			axis.title.x = element_blank(),
-			strip.placement = 'outside',
-			strip.text.y = element_text(angle = 0),
-			panel.border = element_rect(color = 'gray70'),
-			# axis.text.x = element_blank(),
-			# axis.ticks.x = element_blank(),
-			legend.position = 'top'
-		)
-	p
-	
 ```

@@ -22,3 +22,21 @@ Figures:
 * Supp Figure 1: karyoplot with locations of new mutations
 * Supp Figure 2: properties of mutations by repeat unit length
 * Supp Figure 3: number of strains with new mutations per locus
+
+3. `analysis/2_mutator_pheno_scan.Rmd`
+
+Computes statistics:
+* Total number of LD-pruned SNPs: 7,101
+* Max LOD (all): 6.1
+* LOD center and interval (all): 79.7, 91.2, 93.4
+* Max LOD (tetra): 8.4
+* LOD center and interval (tetra): 89.4, 90.4, 93.4
+
+Figures:
+* 2b: Expansion propensity vs. B/D
+* 2c: Expansion propensity vs. B/D by epoch
+* Supp Figure 5: QTL scan by multiple features
+* Supp Figure 6: Distribution of exp propensity by period
+* Supp Figure 7: QTL scan by epoch
+
+

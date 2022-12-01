@@ -37,3 +37,12 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+
+# Mac files
+*DS_Store*
+
+# Jupyter files
+*.ipynb_checkpoints*
+
+# Outputs of notebooks
+*.html
