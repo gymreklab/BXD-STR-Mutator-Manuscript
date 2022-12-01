@@ -42,9 +42,25 @@ Figures:
 * Supp Figure 6: Distribution of exp propensity by period
 * Supp Figure 7: QTL scan by epoch
 
-### 4. `analysis/2_mutator_pheno_plots`
+### 4. `analysis/2_mutator_pheno_plots.ipynb`
 
 Figures:
 * 2a: QTL signal
 * 2d: zoom in on trace for QTL signal
 * Supp Figure 4: zoom in on trace for modest peaks
+
+### 5. `analysis/2_prep_suppdata`
+
+* prepares Supplementary Datasets 1-3
+* Generates auto_info used by `2_mutation_patterns`
+
+### 6. `analysis/2_mutation_patterns`
+
+Figures:
+* 2e: mutation rate vs. length
+* 2f: expansion propensity vs. length
+* Supp Figure 9: motif analysis
+
+Computes statistics:
+* Z-test by repeat unit length (di=0.038, tetra=3.7e-38, tri=0.95)
+
