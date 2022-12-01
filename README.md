@@ -2,12 +2,12 @@
 
 Notebooks for generating figures and results are in the `analysis/` directory.
 
-1. `analysis/stats.sh` computes some general statistics
+### 1. `analysis/stats.sh` computes some general statistics
 * Total number of TRs: 1,176,016
 * Total number of STRs: 1,154,738
 * Total number of VNTRs: 21,278
 
-2. `analysis/1_denovo_strs.Rmd`
+### 2. `analysis/1_denovo_strs.Rmd`
 
 Computes statistics:
 * Number of unique loci with mutations: 18,119
@@ -23,7 +23,7 @@ Figures:
 * Supp Figure 2: properties of mutations by repeat unit length
 * Supp Figure 3: number of strains with new mutations per locus
 
-3. `analysis/2_mutator_pheno_scan.Rmd`
+### 3. `analysis/2_mutator_pheno_scan.Rmd`
 
 Computes statistics:
 * Total number of LD-pruned SNPs: 7,101
@@ -40,7 +40,7 @@ Figures:
 * Supp Figure 6: Distribution of exp propensity by period
 * Supp Figure 7: QTL scan by epoch
 
-4. `analysis/2_mutator_pheno_plots`
+### 4. `analysis/2_mutator_pheno_plots`
 
 Figures:
 * 2a: QTL signal
