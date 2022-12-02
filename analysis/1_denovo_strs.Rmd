@@ -70,7 +70,7 @@ h6 {font-size: 0.75em}
   print(paste("num str:", num_str, "num vntr:", num_vntr))
 ```
 
-# Proportion new mutations by epoch
+# Proportion new mutations by epoch (Figure 1c)
 
 ```{r echo=TRUE, fig.width = 12, fig.height = 6, fig.align = 'center', eval = TRUE}
 	# assemble plot that shows only the number of de novo hom loci per strain
@@ -117,11 +117,11 @@ h6 {font-size: 0.75em}
 ```
 
 
-# Location of de novos
+# Location of de novos (Supp Figure 1)
 
 ```{r echo=TRUE, fig.width = 12, fig.height = 6, fig.align = 'center', eval = TRUE}
 toplot = denovo_strs %>% count(chr, pos, end, name = 'n_strains') %>% filter (n_strains<=10)
-pdf(fs::path("../pdfs", "Suppl_FigKaryoplot-v2.pdf"))
+pdf(fs::path("../pdfs", "SuppFig1_Karyoplot.pdf"))
 detail.region = toGRanges(data.frame("chr13", 89e6, 92e6))
 kp <- plotKaryotype(genome="mm10", cytobands = GRanges())
 kpDataBackground(kp, data.panel = 1, r0=0, r1=0.45, color="white")
@@ -129,7 +129,7 @@ kpPoints(kp, chr=toplot$chr, x=toplot$pos, y=rep(0.1, nrow(toplot)), cex=0.05*to
 dev.off()
 ```
 
-# Size of mutations
+# Size of mutations (Figure 1b)
 ```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', eval = TRUE}
 	# prep input df 
 	xlims = -5:5
@@ -154,7 +154,7 @@ dev.off()
 	p
 ```
 
-# Size of mutations by motif length
+# Size of mutations by motif length (Supp Figure 2)
 
 ```{r echo=TRUE, fig.width = 8, fig.height = 5.5, fig.align = 'center', eval = TRUE}
 	# prep input df 
@@ -223,9 +223,9 @@ dev.off()
 	# ,
 	p
 	w = 10; h = 5
-	ggsave(fs::path('../pdfs', 'Suppl_FigMutationsSummary.pdf'), p, w = w, h = h)
+	ggsave(fs::path('../pdfs', 'SuppFig2_MutationSummary.pdf'), p, w = w, h = h)
 ```
-# Strains with mutations per locus
+# Strains with mutations per locus (Supp Figure 3)
 
 ```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', eval = TRUE}
 	p = denovo_strs %>%
@@ -249,7 +249,7 @@ dev.off()
 	p
 	# ggsave('test.pdf', p, w = 6, h = 4)
 	p_e = p
-	ggsave(fs::path('../pdfs/', 'Suppl_FigMutationsPerLocus.pdf'), p, w = 6, h = 4)
+	ggsave(fs::path('../pdfs/', 'SuppFig3_MutationsPerLocus.pdf'), p, w = 6, h = 4)
 ```
 
 # How many mutations are private
@@ -263,7 +263,7 @@ num_private = denovo_strs %>%
 print(paste("percent of loci with singleton mutation", num_private/num_mut_loci))
 ```
 
-# PCA of new mutations
+# PCA of new mutations (Figure 1d)
 ```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', eval = TRUE}
 	# form the strain by locus matrix for PCA
 	strain_by_loc = denovo_strs %>%

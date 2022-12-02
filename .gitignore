@@ -37,3 +37,17 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+
+# Mac files
+*DS_Store*
+
+# Jupyter and python files
+*.ipynb_checkpoints*
+*__pycache__*
+
+# Outputs of notebooks
+*.html
+
+# R temporary files for the notebooks
+analysis/1_denovo_strs_files/
+analysis/2_mutator_pheno_scan_files/
