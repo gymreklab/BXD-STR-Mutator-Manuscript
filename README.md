@@ -67,3 +67,12 @@ Computes statistics:
 * Correlation of repeat length vs. mutation rate 
 * Correlation of repeat length vs. expansion propensity
 
+### 7. `analysis/2_sex_chroms`
+
+Figures:
+* Supp Figure 10: sex chroms
+
+Computes statistics:
+* Total number of sex chromosome mutations and loci
+* Z test for sex chroms
+
