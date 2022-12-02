@@ -2,12 +2,16 @@
 
 Notebooks for generating figures and results are in the `analysis/` directory.
 
+## Part 1: Identifying new mutations in the BXD family 
+
 ### 1. `analysis/stats.sh` 
 
 Computes some general statistics:
 * Total number of TRs: 1,176,016
 * Total number of STRs: 1,154,738
 * Total number of VNTRs: 21,278
+
+## Part 2: Mapping quantitative trait loci for STR mutation phenotypes
 
 ### 2. `analysis/1_denovo_strs.Rmd`
 
@@ -49,12 +53,12 @@ Figures:
 * 2d: zoom in on trace for QTL signal
 * Supp Figure 4: zoom in on trace for modest peaks
 
-### 5. `analysis/2_prep_suppdata`
+### 5. `analysis/2_prep_suppdata.ipynb`
 
 * prepares Supplementary Datasets 1-3
 * Generates auto_info used by `2_mutation_patterns`
 
-### 6. `analysis/2_mutation_patterns`
+### 6. `analysis/2_mutation_patterns.ipyb`
 
 Figures:
 * 2e: mutation rate vs. length
@@ -67,7 +71,7 @@ Computes statistics:
 * Correlation of repeat length vs. mutation rate 
 * Correlation of repeat length vs. expansion propensity
 
-### 7. `analysis/2_sex_chroms`
+### 7. `analysis/2_sex_chroms.ipyb`
 
 Figures:
 * Supp Figure 10: sex chroms
@@ -75,4 +79,21 @@ Figures:
 Computes statistics:
 * Total number of sex chromosome mutations and loci
 * Z test for sex chroms
+
+## Part 3: Analysis of candidate variants disrupting protein-coding genes
+
+### 8. `analysis/3_vep_annot_per_gene.Rmd`
+
+Figures:
+* 3a: variants in Msh3
+* 3b: zoom in on 5' end
+* Supp Figure 12: Variant selection
+* Supp Figure 13: Variant selection zoom in on Msh3
+* Supp Table 1: VEP summary
+* Supp Table 2: VEP impactful variants (DNA repair genes)
+* Supp Table 4: LOD scores and VEP for SVs
+
+Computes statistics:
+* Number of STRs/SNPs/SVs in QTL interval overlapping protein coding genes
+
 

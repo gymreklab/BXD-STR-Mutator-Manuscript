@@ -27,12 +27,8 @@ output:
 # QTL region for tetra
 
 ```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
-#ci_chr = '13'; ci_lo = 87.58; ci_hi = 93.42; ci_mid = 90.44
-# qtl_ci = tibble('metric' = '% expanded', 'ci_lo' = ci_lo, 'pos' = ci_mid, 'ci_hi' = ci_hi)
 qtl_ci = read_csv('../outs/qtl_ci_tetra.csv')
 ci_lo = as.double(qtl_ci['ci_lo']); ci_hi = as.double(qtl_ci['ci_hi'])
-# original CI
-# ci_chr = '13'; ci_lo = 83.78112; ci_hi = 93.41913; ci_mid = 90.4
 ```
 
 ```{r echo=FALSE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
@@ -92,8 +88,6 @@ ci_lo = as.double(qtl_ci['ci_lo']); ci_hi = as.double(qtl_ci['ci_hi'])
     )
 	tx_info = biomaRt::getBM(
 		attributes = attr_to_get,
-		# filters = c('chromosome_name', 'start', 'end'), 
-		# values = c(list(ci_chr), list(ci_lo*1e6), list(ci_hi*1e6)), 
 		filters = c('ensembl_gene_id'), 
 		values = c(list(gene_info %>% pull(gene_id))), 
 		mart = e102) %>% as_tibble
@@ -1074,8 +1068,7 @@ These are the filters that are used at various points on variant/feature pairs. 
 	# as a single table
 	ft = smry %>% flextable %>% merge_v(j = 1:10) %>% theme_box
 	ft
-	save_as_html(ft, path = fs::path('../pdfs/', 'Suppl_Tbl_2.html'))
-	# save_as_image(x = ft , path = path('../pdfs/', 'Suppl_Tbl_2.pdf'))
+	save_as_html(ft, path = fs::path('../pdfs/', 'SuppTable2_ImpactfulVariants.html'))
 
 ```
 
@@ -1174,33 +1167,14 @@ These are the filters that are used at various points on variant/feature pairs. 
 	ret = var_scan_tbl(redux_vep_annot)
 	ret$ft_obj
 	ret$smry
-	ret$ft_obj %>% save_as_html(path = fs::path('../pdfs/', 'Suppl_Tbl_1.html'))
-	# save_as_image(x = ret$ft_obj , path = path('../pdfs/', 'Suppl_Tbl_1.pdf'))
+	ret$ft_obj %>% save_as_html(path = fs::path('../pdfs/', 'SuppTable1_VEPSummary.html'))
 ```
 
 ## p-val by gene and position
 
-```{r echo=TRUE, fig.width = 16, fig.height = 8, fig.align = 'center', cache = TRUE, eval = TRUE}
-	gene_ord = gene_info %>% arrange(gene_pos) %>% pull(gene_name) %>% keep(~.x %in% (to_plt %>% pull(SYMBOL) %>% unique))
-	p = to_plt %>% 
-		mutate(SYMBOL = fct_relevel(SYMBOL, gene_ord)) %>%
-		ggplot() +
-		geom_point(data = ~.x %>% filter(IMPACT == 'MODIFIER'),
-			   aes(pos/1e6, -log10(p.value)), color = 'gray70') +
-		geom_point(data = ~.x %>% filter(IMPACT != 'MODIFIER'),
-			   aes(pos/1e6, -log10(p.value), color = IMPACT)) +
-		scale_x_continuous(breaks = scales::pretty_breaks(n = 2)) + 
-		scale_color_brewer(palette = 'Dark2', guide = guide_legend(nrow = 1, title = NULL)) + 
-		facet_wrap(~SYMBOL, scales = 'free_x', nrow = 3) + 
-		theme_half_open() +
-		theme(legend.position = 'bottom',
-			  legend.text = element_text(size = 8),
-			  axis.title.x = element_blank()
-		)
-	p
-	ggsave('test.pdf', p, w = 14, h = 10)
-
-```
+#```{r echo=TRUE, fig.width = 16, fig.height = 8, fig.align = 'center', cache = TRUE, eval = TRUE}
+#	gene_ord = gene_info %>% arrange(gene_pos) %>% pull(gene_name) %>% keep(~.x %in% (to_plt %>% pull(SYMBOL) #%>% unique))
+#```
 
 # Supplementary figure VARSEL
 
@@ -1224,7 +1198,8 @@ These are the filters that are used at various points on variant/feature pairs. 
 		left_join(assoc_test, by = c('loc_type', 'loc_id')) %>%
 		filter(!is.na(p.value)) %>%
 		mutate(pass_filter = -log10(p.value) >= lod_thresh & nonmaj_af >= nonmaj_af_thresh)
-	p1 = to_plt %>%
+	gene_ord = gene_info %>% arrange(gene_pos) %>% pull(gene_name) %>% keep(~.x %in% (to_plt %>% pull(SYMBOL) %>% unique))
+		p1 = to_plt %>%
 		mutate(rare = nonmaj_af < nonmaj_af_thresh) %>%
 		ggplot(aes(pos/1e6, -log10(p.value), color = IMPACT, shape = rare)) +
 		geom_point(data = ~.x %>% filter(IMPACT == 'MODIFIER')) + # make sure the MODIFIER points are underneath the other effects
@@ -1274,8 +1249,7 @@ These are the filters that are used at various points on variant/feature pairs. 
 	#ggsave('test.pdf', p, w = 9, h = 8)
 
 	#
-	#ggsave(path(plot_dir, 'Suppl_Fig_6.pdf'), p, w = 9, h = 8)
-	ggsave(fs::path('../pdfs/', 'Suppl_Fig_9.pdf'), p, w = 9, h = 8)
+	ggsave(fs::path('../pdfs/', 'SuppFig12_VariantSelection.pdf'), p, w = 9, h = 8)
 
 ```
 
@@ -1335,7 +1309,7 @@ These are the filters that are used at various points on variant/feature pairs. 
 	ggsave('test.pdf', p, w = 12, h = 12)
 	
 	# figure print
-	ggsave(fs::path('../pdfs/', 'Suppl_Fig_13.pdf'), p, w = 12, h = 12)
+	ggsave(fs::path('../pdfs/', 'SuppFig13_VariantSelection-Msh3.pdf'), p, w = 12, h = 12)
 ```
 
 
@@ -1458,7 +1432,7 @@ These are the filters that are used at various points on variant/feature pairs. 
 	vars_by_gene_agg
 ```
 
-# Supplementary table X
+# Supplementary table 4
 
 #. Apply the `lod_thresh` and `nonmaj_af_thresh` thresholds to this
 
@@ -1504,7 +1478,7 @@ These are the filters that are used at various points on variant/feature pairs. 
 		flextable::width(j = c(5, 7), 1.4)
 
 	ft
-    save_as_html(ft, path = fs::path('../pdfs/', 'Suppl_Tbl_4.html'))
+    save_as_html(ft, path = fs::path('../pdfs/', 'SuppTable4_SVInfo.html'))
 
 	# debug
 	# redux_vep_annot %>% 
