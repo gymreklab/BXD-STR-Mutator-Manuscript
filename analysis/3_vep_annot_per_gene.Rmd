@@ -179,6 +179,14 @@ ci_lo = as.double(qtl_ci['ci_lo']); ci_hi = as.double(qtl_ci['ci_hi'])
 		filter(pos >= ci_lo*1e6 & end <= ci_hi*1e6)
 ```
 
+# Annotated variant counts
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	vep_annot %>%
+		distinct(loc_type, chr, pos, end, sv_type) %>%
+		count(loc_type, name = 'n_loci')
+```
+
 # Filter for variants in genes
 
 #. Remove all intergenic variants (as labelled by VEP)
@@ -266,6 +274,13 @@ ci_lo = as.double(qtl_ci['ci_lo']); ci_hi = as.double(qtl_ci['ci_hi'])
 		relocate(loc_id, .after = 'sv_type')
 ```
 
+# Updated annotated variant counts
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	redux_vep_annot %>%
+		distinct(loc_type, chr, pos, end, sv_type) %>%
+		count(loc_type, name = 'n_loci')
+```
 
 ```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
 	sv_data = readRDS('../data/vep/sv_data.rds')
@@ -575,6 +590,7 @@ ci_lo = as.double(qtl_ci['ci_lo']); ci_hi = as.double(qtl_ci['ci_hi'])
 		distinct(loc_type, loc_id) %>%
 		count(loc_type, name = 'n_loci')
 ```
+
 # Missing genotypes per locus
 
 #. Let's not consider loci where more than 1/2 strains missing (75 strains)
