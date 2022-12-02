@@ -59,8 +59,11 @@ Figures:
 Figures:
 * 2e: mutation rate vs. length
 * 2f: expansion propensity vs. length
+* Supp Figure 8: mutation patterns
 * Supp Figure 9: motif analysis
 
 Computes statistics:
-* Z-test by repeat unit length (di=0.038, tetra=3.7e-38, tri=0.95)
+* Z-test proportions by repeat unit length 
+* Correlation of repeat length vs. mutation rate 
+* Correlation of repeat length vs. expansion propensity
 
