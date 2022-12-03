@@ -1089,6 +1089,76 @@ These are the filters that are used at various points on variant/feature pairs. 
 ```
 
 
+## Features per gene
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	feats_per_gene = function(data, loc_types = c('str', 'snp', 'sv')) {
+		data %>%
+			filter(loc_type %in% loc_types) %>%
+			distinct(SYMBOL, Feature_type, Feature) %>%
+			count(SYMBOL, Feature_type) %>%
+			group_by(Feature_type) %>%
+			skimr::skim(n) %>%
+			as_tibble %>%
+			select(skim_variable, Feature_type, matches('numeric')) %>%
+			rename_with(cols = matches('numeric'), .fn = ~str_replace(.x, 'numeric.', ''))
+	}
+```
+
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	feats_per_gene(redux_vep_annot)
+
+```
+
+## Feature counts
+
+#. `filter1 & filter2`
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	feat_counts = function(data, loc_types = c('str', 'snp', 'sv')) {
+		data %>%
+			filter(loc_type %in% loc_types) %>%
+			distinct(Feature_type, Feature) %>%
+			count(Feature_type)
+	}
+```
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	smry = feat_counts(redux_vep_annot)
+	smry %>% add_row(smry %>% summarise(n = sum(n)))
+```
+
+## Feature/variant pair counts
+
+#. `filter1 & filter2`
+#. Have not reduced to a single IMPACT/Consequence per Feature
+#. Both `filter3` and `filter4` are no longer in use, so just one value
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	pair_count_smry = function(data, loc_types = c('str', 'snp', 'sv')) {
+		smry = list(
+			all_feature_variant_pairs = data %>%
+				# semi_join(assoc_test %>% filter(!is.na(p.value)), by = c('loc_type', 'chr', 'pos', 'end')),
+				semi_join(assoc_test %>% filter(!is.na(p.value)), by = c('loc_type', 'loc_id')),
+			impact_conseq_biotype_filt_pairs = data %>%
+				# semi_join(assoc_test %>% filter(!is.na(p.value)), by = c('loc_type', 'chr', 'pos', 'end')) %>%
+				semi_join(assoc_test %>% filter(!is.na(p.value)), by = c('loc_type', 'loc_id')) # %>%
+				# filter(IMPACT %in% c('HIGH', 'MODERATE', 'LOW') | 
+				# 	   ( IMPACT == 'MODIFIER' & (!Consequence %in% desel_conseq) )) %>%
+				# old filter
+				# filter(BIOTYPE == 'protein_coding')
+		) %>% map_df(~.x, .id = 'list') %>% 
+			filter(loc_type %in% loc_types) %>%
+			count(list)
+		smry
+	}
+```
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	pair_count_smry(redux_vep_annot)
+```
+
 # Supp. Table/Figure SNPSCAN
 
 #. `filter1 & filter2`
