@@ -160,23 +160,25 @@ h6 {font-size: 0.75em}
 # QTL region
 
 ```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
-	ci_chr = '13'; ci_lo = 83.78112; ci_hi = 93.41913; ci_mid = 90.4
+	#ci_chr = '13'; ci_lo = 83.78112; ci_hi = 93.41913; ci_mid = 90.4
+ci_chr = '13'
+qtl_ci = read_csv('../outs/qtl_ci_tetra.csv')
+ci_lo = as.double(qtl_ci['ci_lo']); 
+ci_hi = as.double(qtl_ci['ci_hi']);
+ci_mid = as.double(qtl_ci['pos']);
 ```
 
 # Reload the % expanded QTL mapping results
 
 ```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
-	# load cache file
-	in_cache_dir = '../data/analysis_cache/bxd_qtl_scans'
-	cache_file = path(in_cache_dir, 'final_qtl.rds')
-	final_res = readRDS(cache_file)
+  final_res = read.csv('../outs/final_qtl_res_tetra.csv')
 
 	# also load the dense chr13 qtl data 
 	# cache_file = path(in_cache_dir, 'perc_expand_chr13_dense_qtl.rds')
 	# chr13_dense_qtl_res = readRDS(cache_file)
 
 	# load by-epoch scan
-	by_epoch_scan = readRDS(path(in_cache_dir, 'perc_expand_by_epoch_final_qtl.rds'))
+	by_epoch_scan = read.csv('../outs/perc_expand_by_epoch_tetra_final.csv')
 ```
 
 # Get founder genotypes
@@ -196,7 +198,7 @@ h6 {font-size: 0.75em}
 	
 ```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
 	# qtl and eqtl data objects
-	eqtl_db      = readRDS('../data/gene_expr/qtl_agg/gene_expr_db.rds')
+  eqtl_db       = readRDS('../data/gene_expr/qtl_agg/gene_expr_db.rds')
 	perc_expand  = readRDS('../data/gene_expr/qtl_agg/perc_expand_db.rds')
 	
 	# remove embeded list that causes problems
@@ -241,11 +243,6 @@ h6 {font-size: 0.75em}
 		eqtl_db_snps_covar$signal
 	)
 
-	# TODO: testing this out
-	# subset to only probes that don't have a variants
-	# eqtl_db$signal = eqtl_db$signal %>% filter(n_var_per_probe == 0)
-	# eqtl_db$expr_vals = eqtl_db$expr_vals %>% filter(n_var_per_probe == 0)
-
 	# best point within QTL sized region around gene for each probe
 	ci_hwind = (ci_hi - ci_lo)/2
 	probe_max = eqtl_db$signal %>%
@@ -264,18 +261,6 @@ h6 {font-size: 0.75em}
 		ungroup %>%
 		mutate(is_eqtl = LODadj >= thresh)
 
-	# check proportion of eqtl traces
-	# probe_max %>% count(is_eqtl)
-	
-	# pick best probe per GN, gene_name
-	# best_point = eqtl_db$signal %>%
-	# 	left_join(eqtl_db$genes, by = 'gene_name') %>%
-	# 	left_join(eqtl_db$markers, by = 'marker') %>%
-	# 	arrange(desc(LOD)) %>%
-	# 	filter(mark_pos >= (gene_end+gene_pos)/2 - ci_hwind, mark_pos <= (gene_end+gene_pos)/2 + ci_hwind) %>%
-	# 	distinct(GN, gene_name, probe, .keep_all = TRUE) %>%
-	# 	# left_join(eqtl_db$probes, by = 'probe') %>%
-	# 	mutate(across(where(is.factor), as.character))
 	best_point = probe_max %>%
 		arrange(desc(LODadj)) %>%
 		distinct(GN, gene_name, .keep_all = TRUE)
@@ -294,21 +279,8 @@ h6 {font-size: 0.75em}
 	best_trace = all_trace %>%
 		semi_join(best_point, by = c('GN', 'gene_name', 'probe'))
 
-	# # TODO: for now remove the dense coloc stuff and redo with # snps as covariates
-	# if (0) { # we aren't using these, so why load them ... keeping code around
-	# 	# dense eQTL data (has `coloc` analysis results)
-	# 	# NOTE: dense data only collected for top probe for each dset/gene only for common genes and repr datasets
-	# 	# dense_traces$signal %>% distinct(GN, probe, gene_name) %>% count(GN, probe, gene_name) %>% pull(n) %>% unique
-	# 	dense_traces = readRDS('../data/gene_expr/qtl_dense_agg/gene_expr_db.rds')
-	# }
-	# dense_coloc  = readRDS('../data/gene_expr/qtl_dense_agg/coloc_db.rds')
-
-	# # TODO: testing this out
-	# dense_coloc$smry    = dense_coloc$smry    %>% inner_join(probe_info, by = 'probe')
-	# dense_coloc$details = dense_coloc$details %>% inner_join(probe_info, by = 'probe')
-
 	# define DNA repair genes
-	dna_repair_genes = c('Msh3', 'Xrcc4', 'Ssbp2', 'Atg10', 'Ccnh')	
+	dna_repair_genes = c('Msh3', 'Xrcc4', 'Ssbp2', 'Atg10')	
 ```
 
 # Load finalized list of selected datasets
@@ -389,57 +361,8 @@ h6 {font-size: 0.75em}
 		summarise(n_gn = GN %>% unique %>% length) %>%
 		arrange(desc(n_gn))
 ```
-	
-```{r echo=TRUE, fig.width = 8, fig.height = 9, fig.align = 'center', cache = TRUE, eval = TRUE}
-	# make into gene by GN matrix and order
-	p = gene_by_gn %>%
-		mutate(gene_name = fct_relevel(gene_name, rev(row_ord$gene_name)),
-			   GN = fct_relevel(GN, col_ord$GN)) %>%
-		filter(!is.na(GN)) %>%
-		rowwise %>%
-		mutate(y_label = str_c(gene_name, ' : ', str_pad(gene_type, 20, 'left', pad = ' '))) %>%
-		ungroup %>%
-		arrange(gene_name) %>%
-		mutate(y_label = fct_inorder(y_label)) %>%
-		ggplot(aes(GN, y_label, fill = in_gn)) +
-		geom_tile() + 
-		theme_half_open() + 
-		theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 8),
-			  axis.text.y = element_text(size = 6, family = 'Courier'),
-			  axis.title.y = element_blank(),
-			  strip.text.y = element_text(angle = 0),
-			  legend.position = 'none')
-	p
-	ggsave('test.pdf', p, w = 8, h = 8)
-```
 
 ## Just protein coding genes
-
-```{r echo=TRUE, fig.width = 8, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
-	# make into gene by GN matrix and order
-	p = gene_by_gn %>%
-		mutate(gene_name = fct_relevel(gene_name, rev(row_ord$gene_name))) %>%
-		filter(gene_type == 'protein_coding') %>%
-		filter(!is.na(GN)) %>%
-		pivot_wider(id_cols = c(gene_name, gene_type), names_from = GN, values_from = in_gn) %>%
-		arrange(gene_name) %>%
-		mutate(gene_num = 1:n()) %>%
-		mutate(y_label = str_c(gene_num, '_', gene_name)) %>%
-		mutate(y_label = fct_inorder(y_label)) %>%
-		pivot_longer(cols = !c(gene_name, gene_type, y_label, gene_num), names_to = 'GN', values_to = 'in_gn') %>%
-		mutate(GN = fct_relevel(GN, col_ord$GN)) %>%
-		ggplot(aes(GN, y_label, fill = in_gn)) +
-		geom_tile() + 
-		scale_fill_continuous(na.value = 'white') + 
-		theme_half_open() + 
-		theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 8),
-			  axis.text.y = element_text(size = 6, family = 'Courier'),
-			  axis.title.y = element_blank(),
-			  strip.text.y = element_text(angle = 0),
-			  legend.position = 'none')
-	p
-	ggsave('test.pdf', p, w = 8, h = 4)
-```
 
 # Subset data to list of common protein-coding genes
 
@@ -490,38 +413,7 @@ h6 {font-size: 0.75em}
 			  strip.text.y = element_text(angle = 90),
 			  legend.position = 'none')
 	p
-	ggsave('test.pdf', p, w = 8, h = 4)
-	
-	ggsave(path(plot_dir, 'Suppl_Fig_10.pdf'), p, w = 8, h = 4)
-```
-
-# Visualize all traces one gene at a time (for reference) 
-
-#. Deprecated
-	
-```{r echo=TRUE, fig.width = 6, fig.height = 0.1, fig.align = 'center', cache = TRUE, eval = FALSE}
-	redo = FALSE
-	if (redo) {
-		p_list = best_trace %>%
-			nest(data = !gene_name) %>%
-			# slice(1:5) %>%
-			mutate(p = map2(data, gene_name, function(.x, .y) {
-				p = .x %>% manhat2(colorGN = FALSE, facetGN = TRUE, chrdiv = FALSE, chrlab = FALSE) +
-					guides(color = guide_legend(nrow = 1)) + 
-					theme(legend.position = 'bottom') +
-					labs(title = str_c(.y, ' : ', eqtl_db$genes %>% filter(gene_name == .y) %>% pull(gene_chr)))
-				p$layers = c(geom_vline(xintercept = gene_info %>% filter(gene_name == .y) %>% pull(gene_pos_adj), linetype = 'dashed'),
-						 p$layers)
-				p
-			}))
-		# ggsave('test.pdf', p_list$p[[1]], w = 16, h = 12)
-
-		# print into a pdf
-		out_dir = 'plots'; dir_create(out_dir)
-		pdf(path(out_dir, 'chr13qtl_eqtls.pdf'), w = 16, h = 12)
-		map(p_list$p, print)
-		dev.off()
-	}
+	ggsave('../pdfs/SuppFig16_GeneExpressionDatasets.pdf', p, w = 8, h = 4)
 ```
 
 # Collate datasets where strains support %expanded signal
@@ -582,69 +474,10 @@ h6 {font-size: 0.75em}
 		filter(n_strains >= strains_per_dset_thresh) %>% 
 		distinct(GN)
 
-	# debug
-	# perc_expand_smry %>%
-	# 	mutate(is_qtl = LOD >= thresh) %>%
-	# 	select(GN, n_strains, is_qtl) %>%
-	# 	arrange(desc(n_strains)) %>%
-	# 	mutate(rid = 1:n()) %>%
-	# 	print(n = nrow(.))
-
-	# stat for paper
-	# perc_expand_smry %>% skimr::skim(strains_per_dset)
-	# perc_expand_smry %>% filter(GN == 'GN163')
-    
 	# save figure
-	ggsave(path(plot_dir, 'Suppl_Fig_9.pdf'), p, w = 10, h = 6)
+	ggsave('../pdfs/SuppFig15_eQTLSubsets.pdf', p, w = 10, h = 6)
 ```
 
-# Rank genes
-
-Various ways to rank:
-
-#. Average maxLOD value (average value across datasets; )
-#. Max maxLOD value (best LOD value across all datasets)
-#. Number of datasets with maxLOD value > arbitrary threshold
-#. Number of datasets with maxLOD value > perm threshold
-#. Proportion of datasets with maxLOD value > perm threshold: use this
-	
-```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
-	# order genes by:
-	# NOTE: LOD is really maxLOD, b/c it baked into "best_point" across all markers on chr13
-	top_x_genes = 10
-	other_lvl = str_c('>', top_x_genes)
-	gene_ord = best_point %>%
-		semi_join(qtl_dsets, by = 'GN') %>%
-		group_by(gene_name, gene_chr, gene_pos, gene_end) %>%
-		summarise(avg_LOD = mean(LODadj), 
-				  max_LOD = max(LODadj),
-				  n = length(GN), 
-				  n_over_perm_thresh = sum(LODadj >= unique(thresh)),
-				  .groups = 'drop') %>%
-		mutate(prop = n_over_perm_thresh/n) %>%
-		# arrange(desc(.data[[c('avg_LOD', 'max_LOD', 'n_over_thresh', 'n_over_perm_thresh', 'prop')[5]]])) %>%
-		# arrange(desc(prop*max_LOD)) %>%
-		arrange(desc(prop)) %>%
-		mutate(x = (gene_pos + gene_end)/2, y = 0, width = (gene_end - gene_pos)) %>%
-		mutate(Rank = row_number()) %>%
-		mutate(Rank = if_else(Rank <= top_x_genes, as.character(Rank), other_lvl)) %>%
-		mutate(Rank = fct_inorder(Rank))
-
-	# set color scale for genes
-	gene_pal = RColorBrewer::brewer.pal(8, "Dark2")[1:length(dna_repair_genes)] %>% set_names(dna_repair_genes)
-	other_genes = gene_ord %>%
-		filter(!gene_name %in% dna_repair_genes) %>%
-		pull(gene_name)
-	gene_pal = c(gene_pal, gray.colors(n = length(other_genes), start = 0.2, end = 0.6) %>% set_names(other_genes))
-	gene_ord = gene_ord %>% mutate(gene_col = gene_pal[gene_name])
-
-	# print
-	DT::datatable(
-		gene_ord %>% 
-			select(gene_name, avg_LOD, max_LOD, n, n_over_perm_thresh, prop, Rank) # %>%
-			# filter(gene_name %in% dna_repair_genes)
-	)
-```
 
 # Collate a list of dsets/genes with eQTL signal
 	
@@ -660,40 +493,6 @@ Various ways to rank:
 		filter(LODadj >= unique(thresh)) %>%
 		ungroup %>%
 		select(GN, gene_name, probe)
-```
-
-# LOD vs LODadj
-
-```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
-	eg = eqtl_dsets_genes %>% filter(gene_name == 'Msh3') %>% slice(1)
-	p1 = probe_max %>%
-		semi_join(eg, by = c('GN', 'gene_name')) %>%
-		select(GN, gene_name, probe, maxLOD = LOD, maxLODadj = LODadj, thresh) %>%
-		arrange(desc(maxLODadj)) %>%
-		mutate(ord = 1:n()) %>%
-		ungroup %>% 
-		pivot_longer(cols = c(maxLOD, maxLODadj), names_to = 'var', values_to = 'val') %>%
-		ggplot() + 
-		geom_point(aes(probe, val, color = var)) + 
-		geom_point(data = ~.x %>% distinct(GN, gene_name, probe, thresh), 
-				   shape = '-', aes(probe, thresh), color = 'black') +
-		geom_text_repel(data = ~.x %>% filter(ord == 1, var == 'maxLODadj'), 
-						aes(x = probe, y = val, label = sprintf('best probe: %s', probe)),
-						min.segment.length = 0) + 
-		scale_x_discrete(guide = guide_axis(check.overlap = TRUE)) + 
-		facet_wrap(~GN+gene_name, labeller = label_both) +
-		theme_half_open() +
-		theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
-	p2 = best_trace %>%
-		semi_join(eg, by = c('GN', 'gene_name', 'probe')) %>%
-		pivot_longer(cols = c(LOD, LODadj), names_to = 'var', values_to = 'val') %>%
-		ggplot(aes(mark_pos, val, color = var)) + 
-		geom_step() + 
-		scale_color_brewer(palette = 'Set1') + 
-		facet_wrap(~probe, labeller = label_both) +
-		theme_half_open()
-	p = plot_grid(p1, p2, ncol = 1)
-	ggsave('test.pdf', p, w = 8, h = 6)
 ```
 
 # Run detailed eQTL mapping for Msh3 only with **all** variants
@@ -920,384 +719,11 @@ Various ways to rank:
 	p_filt
 	ggsave('test.pdf', p_filt, w = 14, h = 10)
 	
-	ggsave(path(plot_dir, 'Suppl_Fig_12.pdf'), p_filt, w = 14, h = 10)
+	ggsave('../pdfs/SuppFig18_eQTLSummary.pdf', p_filt, w = 14, h = 10)
 ```
 
-# Genes in the %expanded QTL region
-
-#. Dashed line indicates the midpoint of the QTL according to rqtl2
-#. Gray box indicated the QTL interval
-#. Note that this visualization is after ranking genes so that only the top 10 are labelled
-	
-```{r echo=TRUE, fig.width = 8, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
-	genes_qtl_plot = function(qtl_data, color_by = NULL) {
-		# manual color scale
-		# coul = c(colorRampPalette(RColorBrewer::brewer.pal(9, "PRGn"))(top_x_genes), 'gray30')
-		# confidence interval around QTL from 2_mutator_pheno_scan.Rmd using 1.5 LOD drop method
-		gene_h = 0.1
-		yl = 2.5
-		xlims = c(ci_lo-3, ci_hi+3)
-
-		p = gene_ord %>%
-			arrange(gene_pos, gene_end) %>%
-			mutate(y = (yl+0.1)+IRanges::disjointBins(IRanges::IRanges(gene_pos, gene_end))*gene_h*1.2) %>%
-			mutate(hlite = if_else(gene_name %in% dna_repair_genes, gene_name, NA_character_)) %>%
-			ggplot(aes(x = x, y = y, width = width, height = gene_h)) +
-			geom_rect(aes(xmin = ci_lo, xmax = ci_hi, ymin = -Inf, ymax = Inf), fill = 'gray90') + 
-			geom_step(data = qtl_data, aes(pos, LOD), inherit.aes = FALSE) + 
-			geom_vline(xintercept = ci_mid, linetype = 'dashed') + 
-			geom_text_repel(data = ~.x %>% filter(Rank != other_lvl | gene_name %in% dna_repair_genes),
-							aes(label = gene_name,
-								fontface = if_else(!is.na(hlite), 'bold', 'plain'),
-								color = gene_name
-							),
-							force_pull   = 0, # do not pull toward data points
-							nudge_y      = 0,
-							direction    = "x",
-							angle        = 90,
-							hjust        = 0,
-							segment.size = 0.2,
-							ylim         = c(yl+1.5, NA),
-							max.overlaps = Inf
-							) + 
-			geom_tile(color = NA, alpha = 1) +
-			coord_cartesian(xlim = xlims, ylim = c(yl, NA)) + 
-			# scale_color_brewer(palette = 'Dark2', na.value = 'gray50') + 
-			scale_color_manual(values = gene_pal) + 
-			scale_x_continuous(breaks = scales::breaks_width(width = 2)) + 
-			theme_half_open() + 
-			theme(legend.position = 'none') +
-			labs(x = 'Mb', y = 'LOD')
-		p
-	}
-	
-	genes_qtl_plot_mult_traces = function(qtl_data) {
-		# manual color scale
-		# coul = c(colorRampPalette(RColorBrewer::brewer.pal(9, "PRGn"))(top_x_genes), 'gray30')
-		# confidence interval around QTL from 2_mutator_pheno_scan.Rmd using 1.5 LOD drop method
-		# gene_h = 0.1
-		# yl = 0
-		# xlims = c(ci_lo-3, ci_hi+3)
-		# upshift = 1.5
-
-		# p = gene_ord %>%
-		# 	arrange(gene_pos, gene_end) %>%
-		# 	mutate(y = (yl+upshift)+IRanges::disjointBins(IRanges::IRanges(gene_pos, gene_end))*gene_h*1.2) %>%
-		# 	mutate(hlite = if_else(gene_name %in% dna_repair_genes, gene_name, NA_character_)) %>%
-		# 	ggplot(aes(x = x, y = y, width = width, height = gene_h)) +
-		# 	geom_rect(aes(xmin = ci_lo, xmax = ci_hi, ymin = -Inf, ymax = Inf), fill = 'gray90') + 
-		# 	geom_step(data = qtl_data, aes(pos, LOD, linetype = epoch_grp), inherit.aes = FALSE) + 
-		# 	geom_vline(xintercept = ci_mid, linetype = 'dashed') + 
-		# 	geom_text_repel(data = ~.x %>% filter(Rank != other_lvl | gene_name %in% dna_repair_genes),
-		# 					aes(label = gene_name,
-		# 						fontface = if_else(!is.na(hlite), 'bold', 'plain'),
-		# 						color = gene_name
-		# 					),
-		# 					force_pull   = 0, # do not pull toward data points
-		# 					nudge_y      = 0,
-		# 					direction    = "x",
-		# 					angle        = 90,
-		# 					hjust        = 0,
-		# 					segment.size = 0.2,
-		# 					ylim         = c(yl+upshift+1.5, NA),
-		# 					max.overlaps = Inf
-		# 					) + 
-		# 	geom_tile(color = NA, alpha = 1) +
-		# 	coord_cartesian(xlim = xlims, ylim = c(yl, NA)) + 
-		# 	# scale_color_brewer(palette = 'Dark2', na.value = 'gray50') + 
-		# 	scale_color_manual(values = gene_pal, guide = NULL) + # don't show this legend
-		# 	scale_x_continuous(breaks = scales::breaks_width(width = 2)) + 
-		# 	theme_half_open() + 
-		# 	theme(legend.position = 'right') +
-		# 	labs(x = 'Mb', y = 'LOD')
-
-		gene_h = 0.1
-		yl = 0
-		yu = 1.75
-		xlims = c(ci_lo-3, ci_hi+3)
-		upshift = 0.8
-
-		p1 = gene_ord %>%
-			arrange(gene_pos, gene_end) %>%
-			mutate(y = yl+IRanges::disjointBins(IRanges::IRanges(gene_pos, gene_end))*gene_h*1.2) %>%
-			mutate(hlite = if_else(gene_name %in% dna_repair_genes, gene_name, NA_character_)) %>%
-			ggplot(aes(x = x, y = y, width = width, height = gene_h)) +
-			geom_text_repel(data = ~.x %>% filter(Rank != other_lvl | gene_name %in% dna_repair_genes),
-							aes(label = gene_name,
-								fontface = if_else(!is.na(hlite), 'bold', 'plain'),
-								color = gene_name
-							),
-							size         = 3.5,
-							force_pull   = 0, # do not pull toward data points
-							nudge_y      = 0,
-							direction    = "x",
-							angle        = 90,
-							hjust        = 0,
-							segment.size = 0.2,
-							ylim         = c(yl+upshift, NA),
-							max.overlaps = Inf
-							) + 
-			geom_tile(color = NA, alpha = 1) +
-			coord_cartesian(xlim = xlims, ylim = c(yl, yu)) + 
-			scale_color_manual(values = gene_pal) + 
-			scale_x_continuous(breaks = scales::breaks_width(width = 2)) + 
-			theme_half_open() + 
-			theme(legend.position = 'none',
-				  # axis.title.y  = element_blank(),
-				  axis.text.y     = element_blank(),
-				  axis.ticks.y    = element_blank(),
-				  axis.title.x    = element_blank(),
-				  axis.text.x     = element_blank(),
-				  axis.ticks.x    = element_blank()
-			) + 
-			labs(y = 'Genes')
-		p2 = qtl_data %>%
-			ggplot() +
-			geom_rect(aes(xmin = ci_lo, xmax = ci_hi, ymin = -Inf, ymax = Inf), fill = 'gray90') + 
-			geom_step(data = qtl_data, aes(pos, LOD, color = epoch_grp), inherit.aes = FALSE) + 
-			geom_vline(xintercept = ci_mid, linetype = 'dashed') + 
-			coord_cartesian(xlim = xlims, ylim = c(yl, NA)) + 
-			scale_color_brewer(palette = 'Dark2', na.value = 'gray50', guide = guide_legend(title = 'Epoch')) + 
-			scale_x_continuous(breaks = scales::breaks_width(width = 2)) + 
-			theme_half_open() + 
-			theme(legend.position = 'right') +
-			labs(x = 'Mb', y = 'LOD')
-		p = plot_grid(p1, p2, ncol = 1, axis = 'lr', align = 'v', rel_heights = c(0.4, 1))
-		p
-	}
-```
-
-## Sparse marker array
-
-```{r echo=TRUE, fig.width = 8, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
-	p = final_res$qtl_res %>%
-		filter(metric == '% expanded', chr == 'chr13') %>% 
-		mutate(across(c(pos, end), ~.x/1e6)) %>% 
-		genes_qtl_plot
-	p
-	ggsave('test.pdf', p, w = 8, h = 4)
-
-	p_b = p
-```
-
-## Dense marker array
-
-#. <mark>DEPRECATED</mark>
-	
-```{r echo=TRUE, fig.width = 8, fig.height = 4, fig.align = 'center', cache = TRUE, eval = FALSE}
-	# NOTE: chr13_dense_qtl_res is just for the "proportion_expanded" metric and only for chr13
-	p = chr13_dense_qtl_res %>% 
-		filter(genoprobs == 'dense') %>%
-		mutate(across(c(pos, end), ~.x/1e6)) %>%
-		genes_qtl_plot
-	p
-	ggsave('test.pdf', p, w = 8, h = 4)
-```
-
-## Individual trace by epoch
-
-```{r echo=TRUE, fig.width = 9, fig.height = 5, fig.align = 'center', cache = TRUE, eval = TRUE}
-	# NOTE: only % expanded was scanned in this case
-	p = by_epoch_scan %>%
-		filter(chr == 'chr13') %>% 
-		mutate(epoch_grp = fct_relevel(epoch_grp, c('all', '1', '2', '3a', '3b', '4-7', '2,3b'))) %>%
-		filter(epoch_grp != '2,3b') %>%
-		mutate(across(c(pos, end), ~.x/1e6)) %>% 
-		genes_qtl_plot_mult_traces
-	p
-	ggsave('test.pdf', p, w = 9, h = 5)
-```
-
-## Links to info on genes in the region
-
-```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
-	make_links = function(symbol) {
-		gene_cards = sprintf('https://www.genecards.org/cgi-bin/carddisp.pl?gene=%s&keywords=%s#pathways_interactions', symbol, symbol)
-		sprintf('%s: <a href=%s>gene_cards</a>', symbol, gene_cards)
-	}
-	gene_ord %>%
-		select(gene_name) %>%
-		rowwise %>%
-		mutate(gene_name = make_links(gene_name)) %>%
-		ungroup %>%
-		mutate(rid = 1:n()) %>% relocate(rid, .before = 1) %>%
-		knitr::kable(.)
-```
-
-# eQTL traces top X genes
-
-## Order by Rank in terms of number of eQTLs found
-
-#. Best trace (probe with strongest eQTL signal) shown per dataset
-#. Only datasets where eQTL signal is significant
-	
-```{r echo=TRUE, fig.width = 16, fig.height = 7, fig.align = 'center', cache = TRUE, eval = TRUE}
-	# this is only necessary when multiple chromosomes
-	# p_list = best_trace %>%
-	#     semi_join(eqtl_dsets_genes, by = c('GN', 'gene_name')) %>%
-	#     # semi_join(qtl_dsets, by = 'GN') %>% # not necessary b/c eqtl_dsets_genes has this filtering already
-	#     left_join(gene_ord %>% select(gene_name, Rank), by = 'gene_name') %>%
-	#     filter(Rank != other_lvl) %>%
-	#     nest(data = !c(gene_name, Rank)) %>%
-	#     arrange(Rank) %>%
-	#     # slice(1:5) %>%
-	#     mutate(p = map2(data, gene_name, function(.x, .y) {
-	#         p = .x %>% manhat2(colorGN = TRUE, facetGN = FALSE, chrdiv = FALSE, chrlab = FALSE) +
-	#         # p = .x %>% manhat(colorGN = TRUE, facetGN = FALSE) +
-	#     	guides(color = guide_legend(nrow = 4)) + 
-	#     	theme(legend.position = 'bottom') +
-	#     	# labs(title = str_c(.y, ' : ', eqtl_db$genes %>% filter(gene_name == .y) %>% pull(gene_chr)))
-	#     	labs(title = .y, x = 'Chr13 position')
-	#         p$layers = c(geom_vline(xintercept = gene_info %>% 
-	#     					 filter(gene_name == .y) %>% 
-	#     					 pull(gene_pos_adj), linetype = 'dashed'),
-	#     		 p$layers)
-	#         p
-	#     }))
-	# lgnd = get_legend(p_list$p[[1]])
-	# p_list = p_list %>% mutate(p = map(p, ~.x + theme(legend.position = 'none')))
-	# p = plot_grid(plot_grid(plotlist = p_list$p), 
-	#     	  plot_grid(NULL, lgnd, nrow = 1, rel_widths = c(0.075, 0.8)), 
-	#     	  ncol = 1, rel_heights = c(0.8, 0.1))
-
-	if (0) {
-		# every eqtl trace GN/gene_name/probe even if multiple probes per GN
-		p = all_trace %>%
-			inner_join(probe_max %>% filter(is_eqtl) %>% select(GN, gene_name, probe),
-					  by = c('GN', 'gene_name', 'probe')) %>%
-			left_join(gene_ord %>% select(gene_name, Rank), by = 'gene_name') %>%
-			filter(Rank != other_lvl | gene_name %in% dna_repair_genes) %>%
-			mutate(gene_name = fct_reorder(gene_name, as.integer(Rank))) %>%
-			ggplot(aes(mark_pos, LODadj, color = str_c(GN, '_', probe))) + 
-			geom_step() + 
-			geom_hline(aes(yintercept = thresh, color = GN, alpha = 0.5)) +
-			geom_vline(data = ~gene_info %>% semi_join(.x, by = 'gene_name'),
-				   aes(xintercept = gene_pos)) + 
-			scale_color_viridis_d(guide = guide_legend(nrow = 3)) + 
-			facet_wrap(~gene_name, scales = 'free_y', nrow = 2) +
-			theme_half_open() + 
-			theme(legend.position = 'none')
-	} else {
-		# single best trace per GN/gene_name (top probe essentially)
-		p = best_trace %>% 
-			semi_join(eqtl_dsets_genes, by = c('GN', 'gene_name')) %>%
-			# semi_join(qtl_dsets, by = 'GN') %>% # not necessary b/c eqtl_dsets_genes has this filtering already
-			left_join(gene_ord %>% select(gene_name, Rank), by = 'gene_name') %>%
-			filter(Rank != other_lvl | gene_name %in% dna_repair_genes) %>%
-			mutate(gene_name = fct_reorder(gene_name, as.integer(Rank))) %>%
-			ggplot(aes(mark_pos, LODadj, color = GN)) + 
-			geom_step() + 
-			geom_hline(aes(yintercept = thresh, color = GN, alpha = 0.5)) +
-			# geom_vline(data = ~gene_info %>% semi_join(.x, by = 'gene_name'),
-			# 	   aes(xintercept = gene_pos)) + 
-			scale_color_viridis_d(guide = guide_legend(nrow = 3)) + 
-			# facet_wrap(~gene_name, scales = 'free_y', nrow = 2) +
-			facet_wrap(~gene_name, nrow = 2) +
-			theme_half_open() + 
-			theme(legend.position = 'bottom')
-	}
-	p
-	ggsave('test.pdf', p, w = 16, h = 7)
-```
-
-## Order by genomic position of the gene
-
-#. Main QTL signal in **black** and per-gene QTL signal in **orange**
-#. Meant to visualize closeness of eQTL and QTL peaks for each gene
-#. Signal from best dataset for each gene is shown
-#. <mark>NOTE 02/01/22: removing printing of this</mark>
-	
-```{r echo=TRUE, fig.width = 16, fig.height = 7, fig.align = 'center', cache = TRUE, eval = TRUE}
-	# get top dataset per gene
-	top_dset_per_gene = best_trace %>% 
-		semi_join(eqtl_dsets_genes, by = c('GN', 'gene_name')) %>%
-		left_join(gene_ord %>% select(gene_name, gene_pos, Rank), by = 'gene_name') %>%
-		arrange(desc(LODadj)) %>%
-		distinct(gene_name, .keep_all = TRUE) %>%
-		distinct(GN, gene_name)
-
-	# eQTL traces for top dataset per gene
-	eqtl_trace_data = best_trace %>% 
-		# dense_traces$signal %>% left_join(dense_traces$markers, by = 'marker') %>%
-		semi_join(top_dset_per_gene, by = c('GN', 'gene_name')) %>%
-		left_join(gene_ord %>% select(gene_name, gene_pos, Rank), by = 'gene_name') %>%
-		filter(Rank != other_lvl) %>%
-		mutate(gene_name = fct_reorder(gene_name, gene_pos))
-		# # rescale - minmax
-		# group_by(GN, gene_name) %>%
-		# mutate(LODadj = (LODadj - min(LODadj))/(max(LODadj) - min(LODadj))) %>%
-		# ungroup
-
-	# QTL data on %expanded phenotype for all strains
-	main_qtl_data = final_res$qtl_res %>%
-		filter(metric == '% expanded', chr == 'chr13') %>%
-		# # rescale - minmax
-		# mutate(LODadj = (LODadj - min(LODadj))/(max(LODadj) - min(LODadj))) %>%
-		# #
-		mutate(across(c(pos, end), ~.x/1e6))
-
-	# QTL data on %expanded phentype gathered for each dset separately using only those strains
-	per_dset_qtl_data = top_dset_per_gene %>%
-		left_join(perc_expand %>% rename(pos = mark_pos), by = 'GN') %>%
-		left_join(gene_ord %>% select(gene_name, gene_pos, Rank), by = 'gene_name') %>%
-		mutate(gene_name = fct_reorder(gene_name, gene_pos)) %>%
-		filter(Rank != other_lvl)
-
-	# traces plot
-	p = eqtl_trace_data %>% 
-		ggplot(aes(mark_pos, LODadj, color = gene_name)) + 
-		geom_step() + 
-		geom_step(data = main_qtl_data, aes(pos, LOD), inherit.aes = FALSE, color = 'black') + 
-		geom_step(data = per_dset_qtl_data, aes(pos, LOD), inherit.aes = FALSE, color = 'orange') +
-		scale_color_viridis_d(guide = guide_legend(nrow = 1)) + 
-		facet_wrap(~gene_name, nrow = 2) +
-		theme_half_open() + 
-		theme(legend.position = 'bottom')
-	p
-	# ggsave('test.pdf', p, w = 16, h = 7)
-```
 
 ## Single panel version
-
-#. Signal from best dataset for each gene is shown
-	
-```{r echo=TRUE, fig.width = 6, fig.height = 5, fig.align = 'center', cache = TRUE, eval = TRUE}
-	# xlims = c(0, 125)
-	xlims = c(55, 110)
-	to_plt = best_trace %>% 
-		# dense_traces$signal %>% left_join(dense_traces$markers, by = 'marker') %>%
-		semi_join(eqtl_dsets_genes, by = c('GN', 'gene_name')) %>%
-		left_join(gene_ord %>% select(gene_name, gene_pos, Rank), by = 'gene_name') %>%
-		filter(Rank != other_lvl | gene_name %in% dna_repair_genes) %>%
-		mutate(gene_name = fct_reorder(gene_name, gene_pos)) %>%
-		semi_join(top_dset_per_gene, by = c('GN', 'gene_name')) %>%
-		rename(pos = mark_pos)
-
-	p1 = to_plt %>%
-		# mutate(gene_name = fct_relevel(gene_name, genes_to_lab)) %>%
-		ggplot(aes(pos, LODadj, color = gene_name)) + 
-		geom_step() +
-		# scale_color_brewer(palette = 'Dark2', guide = guide_legend(title = 'eQTL signal')) + 
-		# scale_color_viridis_d(guide = guide_legend(title = 'eQTL signal')) + 
-		scale_color_manual(values = gene_pal) + 
-		coord_cartesian(xlim = xlims) + 
-		theme_half_open() + 
-		theme(legend.position = 'right')
-	p2 = final_res$qtl_res %>%
-		filter(metric == '% expanded', chr == 'chr13') %>%
-		mutate(across(c(pos, end), ~.x/1e6)) %>%
-		ggplot(aes(pos, LOD, color = metric)) +  
-		geom_step() +
-		scale_color_manual(values = 'black', guide = guide_legend(title = 'QTL signal')) +
-		coord_cartesian(xlim = xlims) + 
-		theme_half_open() 
-	p = plot_grid(p1, p2, ncol = 1, axis = 'lr', align = 'v', rel_heights = c(1, 0.7))
-	p
-	ggsave('test.pdf', p, w = 6, h = 5)
-
-	# this will be the first panel of a supplementary figure
-	psupp_corr_a = p
-```
 
 # Colocalization b/w QTL and eQTL signals
 
@@ -1306,8 +732,10 @@ Various ways to rank:
 #. Again, best dataset/probe per gene considered
 #. eQTL and QTL signals are compared on a per dataset basis, not to main QTL signal using all strains
 #. <mark>DEPRECATED</mark>
-	
+
+# TODO need coloc_db.rds	
 ```{r echo=TRUE, fig.width = 8, fig.height = 5, fig.align = 'center', cache = TRUE, eval = FALSE}
+dense_coloc  = readRDS('../data/gene_expr/qtl_dense_agg/coloc_db.rds')
 	p = dense_coloc$smry %>%
 		# join gene name to coloc res (don't have it by default)
 		left_join(best_point %>% distinct(GN, probe, gene_name), by = c('GN', 'probe', 'gene_name')) %>%
@@ -1522,7 +950,7 @@ Various ways to rank:
 		geom_step(data = top_signals,
 				  # aes(mark_pos, LODadj, group = GN, alpha = maxLOD, color = gene_name)) +
 				  aes(mark_pos, LODadj, group = GN, color = gene_name)) +
-		geom_step(data = final_res$qtl_res %>%
+		geom_step(data = final_res %>%
 					  filter(metric == '% expanded', chr == 'chr13') %>%
 					  mutate(across(c(pos, end), ~.x/1e6)),
 				  aes(pos, LOD), inherit.aes = FALSE) + 
@@ -1536,69 +964,8 @@ Various ways to rank:
 		) +
 		labs(x = 'Mb')
 	p
-	ggsave('test.pdf', p, w = 10, h = 4)
+	ggsave('../pdfs/SuppFig19_DetailedEQTLDNARepair.pdf', p, w = 10, h = 4)
 
 	p_c = p
 ```
 
-#. <mark>NOTE: THIS SECTION IS ONLY FOR TROUBLESHOOTING AND IS HIDDEN</mark>
-#. Check the selection of those GN/dset combinations with significant peaks
-#. Panels w/ significant peaks are boxed
-	
-```{r echo=TRUE, fig.width = 16, fig.height = 10, fig.align = 'center', cache = TRUE, eval = FALSE}
-	p_list = best_trace %>%
-		filter(gene_name %in% dna_repair_genes) %>%
-		semi_join(qtl_dsets, by = 'GN') %>%
-		left_join(eqtl_dsets_genes %>% mutate(is_signif = TRUE), by = c('GN', 'gene_name')) %>%
-		mutate(is_signif = replace_na(is_signif, FALSE)) %>%
-		# split into two groups
-		mutate(uid = cut_interval(as.integer(as.factor(GN)), 2, label = FALSE)) %>%
-		nest(data = !uid) %>%
-		mutate(p = map(data, 
-			~.x %>%
-				ggplot(aes(mark_pos, LODadj, color = gene_name)) +
-				geom_hline(aes(yintercept = thresh), linetype = 'dashed') + 
-				geom_step() +
-				geom_rect(data = ~.x %>% filter(is_signif),
-						  xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, 
-						  color = 'gray30', alpha = 0.5, fill = NA, size = 2) + 
-				coord_cartesian(ylim = c(0, NA)) + 
-				scale_color_viridis_d() + 
-				facet_grid2(gene_name~GN, scales = 'free_y', axes = 'margins', independent = 'none') + 
-				theme_half_open() +
-				theme(
-					panel.spacing = unit(1, 'pt'),
-					legend.position = 'bottom',
-					strip.text.y.right = element_text(angle = 0),
-					axis.text.x = element_blank(),
-					axis.ticks.x = element_blank()
-				)
-		))
-	p = plot_grid(plotlist = p_list$p, nrow = 2)
-
-	p
-	# ggsave('test.pdf', p, w = 16, h = 10)
-```
-
-# Export data
-		
-```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = FALSE, eval = TRUE}
-	if (FALSk) {  # disabling this to not overwrite existing files for now
-		cache_dir = '../data/analysis_cache'
-		out_file = path(cache_dir, 'eqtl_data.rds')
-		to_save = list( 
-			qtl_dsets         = qtl_dsets, # dsets that support a QTL signal`
-			eqtl_dsets_genes  = eqtl_dsets_genes, # dset/gene pairs that have eqtl signal
-			gene_ord          = gene_ord, # ranked genes by number of dsets with eQTL signal
-			# unq_expr_vals     = unq_expr_vals, # unique expression values aggregated in different ways
-			best_trace        = best_trace,
-			best_point        = best_point,
-			probe_max         = probe_max,
-			sel_dsets         = sel_dsets,
-			common_prot_genes = common_prot_genes,
-			gene_pal	      = gene_pal,
-			signal_signal_cor = signal_signal_cor
-		)
-		saveRDS(to_save, out_file)
-	}
-```
