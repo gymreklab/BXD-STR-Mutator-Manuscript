@@ -47,13 +47,6 @@ h6 {font-size: 0.75em}
 	library(DBI)
 	library(dbplyr)
 	library(RColorBrewer)
-	devtools::load_all('../BXDstrs_package/BXDstrs')
-
-	# check that package was loaded
-	# ls("package:BXDstrs")
-
-	# directory for production plots
-	plot_dir = '../finalized_figs'; dir_create(plot_dir)
 ```
 
 # Functions
@@ -184,7 +177,8 @@ ci_mid = as.double(qtl_ci['pos']);
 # Get founder genotypes
 
 ```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
-	bxd_mark_gts = maxmarg(BXDstrs::qtl_data$snp_probs[,'13'], minprob = 0.5) %>% 
+  qtl_data = readRDS('../outs/qtl_data.rds')
+	bxd_mark_gts = maxmarg(qtl_data$snp_probs[,'13'], minprob = 0.5) %>% 
 		.[[1]] %>%
 		as.data.frame %>%
 		rownames_to_column(var = 'strain') %>%
@@ -419,7 +413,9 @@ ci_mid = as.double(qtl_ci['pos']);
 # Collate datasets where strains support %expanded signal
 
 ```{r echo=TRUE, fig.width = 10, fig.height = 6, fig.align = 'center', cache = TRUE, eval = TRUE}
-	strains_per_dset = BXDstrs::dset_strains %>% 
+  dset_strains = readRDS('../data/dset_strains.rds')
+
+	strains_per_dset = dset_strains %>% 
 		# filter in only sequenced ones
 		semi_join(strain_info %>% filter(is_seq_str), by = c('strain' = 'bxd_id')) %>%
 		count(GN, name = 'n_strains')
@@ -430,7 +426,7 @@ ci_mid = as.double(qtl_ci['pos']);
 		left_join(strains_per_dset, by = 'GN') %>%
 		mutate(diff = LOD - thresh) %>%
 		# mutate(GN = fct_reorder(GN, desc(diff)))
-		mutate(GN = fct_reorder(GN, desc(n_strains)))
+		mutate(GN = fct_reorder(GN, dplyr::desc(n_strains)))
 ```
 
 #. Range of number of strains per dataset: `r strains_per_dset %>% pull(n_strains) %>% range`
@@ -541,7 +537,7 @@ ci_mid = as.double(qtl_ci['pos']);
 
 	# run association testing
 	cache_dir = '../data/analysis_cache'; dir_create(cache_dir)
-	cache_file = path(cache_dir, 'eqtl_detailed.rds'); redo = FALSE
+	cache_file = fs::path(cache_dir, 'eqtl_detailed.rds'); redo = FALSE
 	if (!file_exists(cache_file) | redo) {
 		# standard lm way
 		nested_loci_gts = loci_gts %>%
@@ -624,6 +620,54 @@ ci_mid = as.double(qtl_ci['pos']);
 #. `qtl_dsets`: dataset that support QTL rediscovery
 #. `eqtl_dsets_genes`: dset/gene pairs where an eQTL was found 
 
+# Rank genes
+
+Various ways to rank:
+
+#. Average maxLOD value (average value across datasets; )
+#. Max maxLOD value (best LOD value across all datasets)
+#. Number of datasets with maxLOD value > arbitrary threshold
+#. Number of datasets with maxLOD value > perm threshold
+#. Proportion of datasets with maxLOD value > perm threshold: use this
+
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# order genes by:
+	# NOTE: LOD is really maxLOD, b/c it baked into "best_point" across all markers on chr13
+	top_x_genes = 12
+	other_lvl = str_c('>', top_x_genes)
+	gene_ord = best_point %>%
+		semi_join(qtl_dsets, by = 'GN') %>%
+		group_by(gene_name, gene_chr, gene_pos, gene_end) %>%
+		summarise(avg_LOD = mean(LODadj), 
+				  max_LOD = max(LODadj),
+				  n = length(GN), 
+				  n_over_perm_thresh = sum(LODadj >= unique(thresh)),
+				  .groups = 'drop') %>%
+		mutate(prop = n_over_perm_thresh/n) %>%
+		# arrange(desc(.data[[c('avg_LOD', 'max_LOD', 'n_over_thresh', 'n_over_perm_thresh', 'prop')[5]]])) %>%
+		# arrange(desc(prop*max_LOD)) %>%
+		arrange(desc(prop)) %>%
+		mutate(x = (gene_pos + gene_end)/2, y = 0, width = (gene_end - gene_pos)) %>%
+		mutate(Rank = row_number()) %>%
+		mutate(Rank = if_else(Rank <= top_x_genes, as.character(Rank), other_lvl)) %>%
+		mutate(Rank = fct_inorder(Rank))
+
+	# set color scale for genes
+	gene_pal = RColorBrewer::brewer.pal(8, "Dark2")[1:length(dna_repair_genes)] %>% set_names(dna_repair_genes)
+	other_genes = gene_ord %>%
+		filter(!gene_name %in% dna_repair_genes) %>%
+		pull(gene_name)
+	gene_pal = c(gene_pal, gray.colors(n = length(other_genes), start = 0.2, end = 0.6) %>% set_names(other_genes))
+	gene_ord = gene_ord %>% mutate(gene_col = gene_pal[gene_name])
+
+	# print
+	DT::datatable(
+		gene_ord %>% 
+			select(gene_name, avg_LOD, max_LOD, n, n_over_perm_thresh, prop, Rank) # %>%
+			# filter(gene_name %in% dna_repair_genes)
+	)
+```
+
 # Best eQTL LOD per gene/dset
 
 ## Version 1 (all GN dsets)
@@ -641,6 +685,7 @@ ci_mid = as.double(qtl_ci['pos']);
 	# heatmap of maxLOD
 	# try different ways to order genes and pick one for production
 	mid_point = 3/(best_point %>% pull(LOD) %>% max)*4
+	
 	# ord_by = 'prop'
 	p_list = map(list('avg_LOD', 'max_LOD', 'n_over_perm_thresh', 'prop') %>% set_names(.), function(ord_by) {
 		gene_lvls = gene_ord %>% arrange(desc(.data[[ord_by]])) %>% pull(gene_name)
@@ -727,44 +772,6 @@ ci_mid = as.double(qtl_ci['pos']);
 
 # Colocalization b/w QTL and eQTL signals
 
-## Dense-array pre-computed using COLOC
-
-#. Again, best dataset/probe per gene considered
-#. eQTL and QTL signals are compared on a per dataset basis, not to main QTL signal using all strains
-#. <mark>DEPRECATED</mark>
-
-# TODO need coloc_db.rds	
-```{r echo=TRUE, fig.width = 8, fig.height = 5, fig.align = 'center', cache = TRUE, eval = FALSE}
-dense_coloc  = readRDS('../data/gene_expr/qtl_dense_agg/coloc_db.rds')
-	p = dense_coloc$smry %>%
-		# join gene name to coloc res (don't have it by default)
-		left_join(best_point %>% distinct(GN, probe, gene_name), by = c('GN', 'probe', 'gene_name')) %>%
-		semi_join(top_dset_per_gene, by = c('GN', 'gene_name')) %>%
-		left_join(gene_ord %>% select(gene_name, gene_pos, Rank), by = 'gene_name') %>%
-		filter(Rank != other_lvl) %>%
-		mutate(gene_name = fct_reorder(gene_name, gene_pos)) %>%
-		pivot_longer(matches('^H\\d'), names_to = 'hypothesis', values_to = 'prob') %>%
-		mutate(hypothesis = recode(hypothesis, 
-								   H0 = 'no caus var', 
-								   H1 = 'caus var in trait1', 
-								   H2 = 'caus var in trait2', 
-								   H3 = 'diff caus var', 
-								   H4 = 'same caus var')) %>%
-		ggplot(aes(gene_name, prob, color = hypothesis)) + 
-		geom_point() +
-		geom_line(aes(group = hypothesis)) +
-		scale_color_brewer(palette = 'Dark2') +
-		theme_half_open() + 
-		theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
-			  axis.title.x = element_blank(),
-			  legend.position = c(0.9, 0.8),
-			  legend.justification = c(1, 1)
-		)
-	p
-	ggsave('test.pdf', p, w = 8, h = 5)
-
-```
-
 ## Simple way by taking LD b/w markers
 
 ### Top dset per gene
@@ -775,6 +782,14 @@ dense_coloc  = readRDS('../data/gene_expr/qtl_dense_agg/coloc_db.rds')
 #. <mark>NOTE 02/01/22: removing printing of this</mark>
 	
 ```{r echo=TRUE, fig.width = 8, fig.height = 5, fig.align = 'center', cache = TRUE, eval = TRUE}
+# QTL data on %expanded phenotype for all strains
+	main_qtl_data = final_res %>%
+		filter(metric == '% expanded', chr == 'chr13') %>%
+		# # rescale - minmax
+		# mutate(LODadj = (LODadj - min(LODadj))/(max(LODadj) - min(LODadj))) %>%
+		# #
+		mutate(across(c(pos, end), ~.x/1e6))
+
 	# combine qtl and eqtl signal traces for dataset of interest
 	qtl_eqtl_signals_comb = list(
 		main_qtl     = main_qtl_data %>% 
@@ -783,7 +798,7 @@ dense_coloc  = readRDS('../data/gene_expr/qtl_dense_agg/coloc_db.rds')
 			select(marker, LOD) %>%
 			crossing(eqtl_dsets_genes),
 		per_dset_qtl = perc_expand %>% 
-			rename(pos = mark_pos) %>%
+			dplyr::rename(pos = mark_pos) %>%
 			inner_join(eqtl_dsets_genes, by = 'GN') %>%
 			select(GN, gene_name, marker, LOD),
 		eqtl         = best_trace %>% 
@@ -820,7 +835,15 @@ dense_coloc  = readRDS('../data/gene_expr/qtl_dense_agg/coloc_db.rds')
 				filter(!is.na(lead_snp_cor))
 		})) %>%
 		unnest(data)
-
+	
+	# get top dataset per gene
+	top_dset_per_gene = best_trace %>% 
+		semi_join(eqtl_dsets_genes, by = c('GN', 'gene_name')) %>%
+		left_join(gene_ord %>% select(gene_name, gene_pos, Rank), by = 'gene_name') %>%
+		arrange(desc(LODadj)) %>%
+		distinct(gene_name, .keep_all = TRUE) %>%
+		distinct(GN, gene_name)
+	
 	p = qtl_eqtl_mark_cor %>%
 		semi_join(top_dset_per_gene, by = c('GN', 'gene_name')) %>%
 		ggplot(aes(gene_name, lead_snp_cor)) + 
@@ -829,7 +852,7 @@ dense_coloc  = readRDS('../data/gene_expr/qtl_dense_agg/coloc_db.rds')
 		theme_half_open() + 
 		theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
 	p
-	# ggsave('test.pdf', p, w = 8, h = 5)
+	ggsave('../pdfs/SuppFig20_MoreCo-localization_a.pdf', p, w = 8, h = 5)
 ```
 
 ### All dset/gene pairs
@@ -847,7 +870,8 @@ dense_coloc  = readRDS('../data/gene_expr/qtl_dense_agg/coloc_db.rds')
 		theme_half_open() + 
 		theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
 	p
-	# ggsave('test.pdf', p, w = 8, h = 5)
+	ggsave('../pdfs/SuppFig20_MoreCo-localization_b.pdf', p, w = 8, h = 5)
+
 ```
 
 ## Correlation b/w traces
@@ -903,7 +927,7 @@ dense_coloc  = readRDS('../data/gene_expr/qtl_dense_agg/coloc_db.rds')
 			axis.title.x = element_blank()
 		)
 	p
-	ggsave('test.pdf', p, w = 8, h = 4)
+	ggsave('../pdfs/SuppFig20_MoreCo-localization_c.pdf', p, w = 8, h = 4)
 ```
 
 ### eQTL vs. main QTL (finalized)
@@ -968,4 +992,3 @@ dense_coloc  = readRDS('../data/gene_expr/qtl_dense_agg/coloc_db.rds')
 
 	p_c = p
 ```
-
