@@ -49,5 +49,9 @@ vignettes/*.pdf
 *.html
 
 # R temporary files for the notebooks
-analysis/1_denovo_strs_files/
-analysis/2_mutator_pheno_scan_files/
+analysis/*_files/
+analysis/*_cache/
+analysis/*.html
+
+# large data files disallowed by github
+large_data/*
