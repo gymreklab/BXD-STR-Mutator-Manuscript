@@ -816,7 +816,7 @@ Various ways to rank:
 	p
 	# this will be the first panel of a supplementary figure
 	psupp_corr_a = p
-	ggsave('../pdfs/Fig4a.pdf', p_filt, w = 14, h = 10)
+	ggsave('../pdfs/Fig4a.pdf', p1, w = 14, h = 10)
 
 ```
 
