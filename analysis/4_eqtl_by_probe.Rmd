@@ -502,7 +502,7 @@ h6 {font-size: 0.75em}
 	p = plot_grid(p_a, p_b, p_c, p_d, nrow = 2)
 	p
 
-	w = 14; h = 9
+	w = 20; h = 9
 
 	# save figure
 	ggsave('../pdfs/SuppFig21_Detailedprobe-levelanalysisofmsh3.pdf', p, w = w, h = 9)
