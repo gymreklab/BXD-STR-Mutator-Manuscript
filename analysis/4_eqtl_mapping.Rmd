@@ -172,6 +172,8 @@ ci_mid = as.double(qtl_ci['pos']);
 
 	# load by-epoch scan
 	by_epoch_scan = read.csv('../outs/perc_expand_by_epoch_tetra_final.csv')
+	
+	strain_info = readr::read_csv('../outs/strain_info.csv')
 ```
 
 # Get founder genotypes
@@ -633,7 +635,7 @@ Various ways to rank:
 ```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
 	# order genes by:
 	# NOTE: LOD is really maxLOD, b/c it baked into "best_point" across all markers on chr13
-	top_x_genes = 12
+	top_x_genes = 10
 	other_lvl = str_c('>', top_x_genes)
 	gene_ord = best_point %>%
 		semi_join(qtl_dsets, by = 'GN') %>%
@@ -810,7 +812,7 @@ Various ways to rank:
 	lead_mark_per_dset_qtl_eqtl = qtl_eqtl_signals_comb  %>%
 		left_join(gene_ord %>% select(gene_name, gene_pos, Rank), by = 'gene_name') %>%
 		mutate(gene_name = fct_reorder(gene_name, gene_pos)) %>%
-		filter(Rank != other_lvl) %>%
+		filter(Rank != other_lvl | gene_name %in% dna_repair_genes) %>%
 		# keep best marker with top LOD for each trace_type
 		arrange(desc(LOD)) %>%
 		distinct(trace_type, gene_name, GN, .keep_all = TRUE, with_ties = FALSE)

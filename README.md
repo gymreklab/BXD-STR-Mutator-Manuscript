@@ -96,4 +96,9 @@ Figures:
 Computes statistics:
 * Number of STRs/SNPs/SVs in QTL interval overlapping protein coding genes
 
+## Part 4: Expansion propensity QTL co-localizes with multiple cis-eQTLs
 
+Figures:
+* Supp Figure 15: Redo QTL with subsets
+* Supp Figure 16: summary of availability of expression datasets
+* Supp Figure 18: summary of eQTL results
