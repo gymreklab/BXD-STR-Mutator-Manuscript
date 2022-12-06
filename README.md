@@ -118,6 +118,5 @@ Figures:
 ### 11. `analysis/4_eqtl_by_probe.Rmd`
 
 Figures:
-* Supp Figure 17_1: Msh3 transcripts
-* Supp Figure 17_2: probe-level analysis for Msh3
+* Supp Figure 17: probe-level analysis for Msh3
 * Supp Figure 21: Detailed probe-level analysis of Msh3
