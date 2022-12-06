@@ -109,6 +109,7 @@ h6 {font-size: 0.75em}
 		p
 	}
 	
+		
 	# plotting function
 	plt_by_nvars = function(data, ycol) {
 		p_list = map(dna_repair_genes, function(.x) {
@@ -117,8 +118,9 @@ h6 {font-size: 0.75em}
 			p1 = tx_info %>% 
 				filter(gene_name == .x) %>%
 				mutate(across(matches('_(pos|end)'), ~.x/1e6)) %>%
-				tx_track(xlims = xlims) +
+				tx_track(xlims = xlims, ylabs = TRUE) +
 				facet_wrap(~gene_name)
+			
 			p2 = data %>%
 				mutate(n_var_per_probe = as.factor(n_var_per_probe)) %>%
 				mutate(probe_mid = probe_mid/1e6) %>%
@@ -317,19 +319,28 @@ h6 {font-size: 0.75em}
 		filter(probe_type == 'probe_array') %>%
 		plt_by_nvars(ycol = 'LOD_snps_covar')
 	p
-	ggsave('../pdfs/SuppFig17_probe-level analysis_2.pdf', p, w = 17, h = 6)
+```
+
+```{r echo=TRUE, fig.width = 17, fig.height = 6, fig.align = 'center', cache = TRUE, eval = TRUE, warning = FALSE}
+  xlims = c(92.211872, 92.355000)
+  dna_repair_genes = c('Msh3')
+	p = probe_max_snps_covar %>%
+		filter(probe_type == 'probe_array') %>%
+		plt_by_nvars(ycol = 'LOD_snps_covar')
+	p
+	ggsave('../pdfs/SuppFig17_probe-levelanalysis.pdf', p, w = 12, h = 6)
 
 ```
 
 # Variants per probe (corrected LOD & passing threshold)
 
 ```{r echo=TRUE, fig.width = 17, fig.height = 6, fig.align = 'center', cache = TRUE, eval = TRUE, warning = FALSE}
+	dna_repair_genes = c('Msh3', 'Atg10', 'Xrcc4', 'Ssbp2')
 	p = probe_max_snps_covar %>%
 		filter(probe_type == 'probe_array') %>%
 		filter(LOD_snps_covar >= thresh_snps_covar) %>%
 		plt_by_nvars(ycol = 'LOD_snps_covar')
 	p
-	# ggsave('test.pdf', p, w = 17, h = 6)
 ```
 
 
@@ -343,7 +354,6 @@ h6 {font-size: 0.75em}
 	msh3_tx = tx_track(
 		tx_info %>% filter(gene_name == 'Msh3') %>% mutate(across(matches('_(pos|end)'), ~.x/1e6)),
 		xlims = xlims, ylabs = TRUE)
-
 	
 	# manhattan style
 	msh3_lod = probe_max_snps_covar %>%
@@ -360,7 +370,6 @@ h6 {font-size: 0.75em}
 		theme_half_open() +
 		theme(legend.position = 'left') +
 		coord_cartesian(xlim = xlims)
-
 	# visualize location of probes
 	msh3_probes = probe_max_snps_covar %>%
 		filter(gene_name == 'Msh3') %>%
@@ -383,7 +392,6 @@ h6 {font-size: 0.75em}
 		)
 	p = plot_grid(msh3_tx, msh3_lod, ncol = 1, align = 'v', axis = 'lr', rel_heights = c(1.2, 1))
 	p
-	ggsave('../pdfs/SuppFig17_probe-level analysis_1.pdf', p, w = 11, h = 5.5)
 ```
 
 ## Zoom w/ probe positions
@@ -442,21 +450,6 @@ h6 {font-size: 0.75em}
 		) +
 		coord_cartesian(xlim = xlims) +
 		labs(y = 'LOD')
-	
-	# eqtls by position
-	## with markers
-	# p3 = traces %>%
-	# 	filter(gene_name == 'Msh3') %>%
-	# 	# NOTE: keep only datasets where gene is significant, but not top probe
-	# 	semi_join(eqtl_dsets_genes, by = c('GN', 'gene_name')) %>%
-	# 	left_join(eqtl_data$markers, by = 'marker') %>%
-	# 	ggplot(aes(mark_pos, LOD_snps_covar)) + 
-	# 	geom_point(color = 'gray50') + 
-	# 	scale_color_viridis_d(na.value = 'gray40') + 
-	# 	theme_half_open() + 
-	# 	theme(legend.position = 'left') +
-	# 	coord_cartesian(xlim = xlims) + 
-	# 	labs(title = 'By marker position')
 
 	## with individual snps
 	p3 = msh3_eqtl_detailed %>%
