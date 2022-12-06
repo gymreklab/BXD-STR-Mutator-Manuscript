@@ -222,7 +222,10 @@ ci_mid = as.double(qtl_ci['pos']);
 	# convert position
 	eqtl_db$genes = eqtl_db$genes %>% mutate(across(c(gene_pos, gene_end), ~.x/1e6))
 	eqtl_db_snps_covar$genes = eqtl_db_snps_covar$genes %>% mutate(across(c(gene_pos, gene_end), ~.x/1e6))
-
+	
+	# Restrict to genes in the window
+	eqtl_db$genes = eqtl_db$genes %>% filter(gene_pos > ci_lo & gene_end < ci_hi)
+	
 	# check closeness of using number of snps as a covariate vs. not
 	if (0) {
 		left_join(
@@ -1033,4 +1036,27 @@ Various ways to rank:
 	ggsave('../pdfs/SuppFig19_DetailedEQTLDNARepair.pdf', p, w = 10, h = 4)
 
 	p_c = p
+```
+
+# Export data
+		
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = FALSE, eval = TRUE}
+	if (1) {  # re-enabling
+		cache_dir = '../data/analysis_cache'
+		out_file = path(cache_dir, 'eqtl_data.rds')
+		to_save = list( 
+			qtl_dsets         = qtl_dsets, # dsets that support a QTL signal`
+			eqtl_dsets_genes  = eqtl_dsets_genes, # dset/gene pairs that have eqtl signal
+			gene_ord          = gene_ord, # ranked genes by number of dsets with eQTL signal
+			# unq_expr_vals     = unq_expr_vals, # unique expression values aggregated in different ways
+			best_trace        = best_trace,
+			best_point        = best_point,
+			probe_max         = probe_max,
+			sel_dsets         = sel_dsets,
+			common_prot_genes = common_prot_genes,
+			gene_pal	      = gene_pal,
+			signal_signal_cor = signal_signal_cor
+		)
+		saveRDS(to_save, out_file)
+	}
 ```

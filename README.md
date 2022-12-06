@@ -98,9 +98,20 @@ Computes statistics:
 
 ## Part 4: Expansion propensity QTL co-localizes with multiple cis-eQTLs
 
+### 9. `analysis/4_eqtl_mapping.Rmd`
+
 Figures:
 * Supp Figure 15: Redo QTL with subsets
 * Supp Figure 16: summary of availability of expression datasets
 * Supp Figure 18: summary of eQTL results
+* Supp Figure 19: detailed eQTL traces for DNA repair genes
 * Supp Figure 20: co-localization of QTL/eQTL signals
 * 4a: traces of best eQTL signals
+
+### 10. `analysis/4_gene_expr.Rmd`
+
+Figures:
+* Supp Figure 14: summary of expression levels
+* Supp Figure 19b: detailed per-dataset expression levels for DNA repair
+* 4b: expression diffs for dna repair genes
+
