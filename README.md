@@ -104,7 +104,7 @@ Figures:
 * Supp Figure 15: Redo QTL with subsets
 * Supp Figure 16: summary of availability of expression datasets
 * Supp Figure 18: summary of eQTL results
-* Supp Figure 19: detailed eQTL traces for DNA repair genes
+* Supp Figure 19a: detailed eQTL traces for DNA repair genes
 * Supp Figure 20: co-localization of QTL/eQTL signals
 * 4a: traces of best eQTL signals
 
@@ -115,3 +115,9 @@ Figures:
 * Supp Figure 19b: detailed per-dataset expression levels for DNA repair
 * 4b: expression diffs for dna repair genes
 
+### 11. `analysis/4_eqtl_by_probe.Rmd`
+
+Figures:
+* Supp Figure 17_1: Msh3 transcripts
+* Supp Figure 17_2: probe-level analysis for Msh3
+* Supp Figure 21: Detailed probe-level analysis of Msh3
