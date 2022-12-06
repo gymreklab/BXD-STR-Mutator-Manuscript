@@ -173,7 +173,7 @@ ci_mid = as.double(qtl_ci['pos']);
 	# load by-epoch scan
 	by_epoch_scan = read.csv('../outs/perc_expand_by_epoch_tetra_final.csv')
 	
-	strain_info = readr::read_csv('../outs/strain_info.csv')
+	strain_info = read.csv('../outs/strain_info.csv')
 ```
 
 # Get founder genotypes
@@ -778,6 +778,14 @@ Various ways to rank:
 ```{r echo=TRUE, fig.width = 6, fig.height = 5, fig.align = 'center', cache = TRUE, eval = TRUE}
 	# xlims = c(0, 125)
 	xlims = c(55, 110)
+	# get top dataset per gene
+	top_dset_per_gene = best_trace %>% 
+		semi_join(eqtl_dsets_genes, by = c('GN', 'gene_name')) %>%
+		left_join(gene_ord %>% select(gene_name, gene_pos, Rank), by = 'gene_name') %>%
+		arrange(desc(LODadj)) %>%
+		distinct(gene_name, .keep_all = TRUE) %>%
+		distinct(GN, gene_name)
+	
 	to_plt = best_trace %>% 
 		# dense_traces$signal %>% left_join(dense_traces$markers, by = 'marker') %>%
 		semi_join(eqtl_dsets_genes, by = c('GN', 'gene_name')) %>%
@@ -880,14 +888,6 @@ Various ways to rank:
 				filter(!is.na(lead_snp_cor))
 		})) %>%
 		unnest(data)
-	
-	# get top dataset per gene
-	top_dset_per_gene = best_trace %>% 
-		semi_join(eqtl_dsets_genes, by = c('GN', 'gene_name')) %>%
-		left_join(gene_ord %>% select(gene_name, gene_pos, Rank), by = 'gene_name') %>%
-		arrange(desc(LODadj)) %>%
-		distinct(gene_name, .keep_all = TRUE) %>%
-		distinct(GN, gene_name)
 	
 	p = qtl_eqtl_mark_cor %>%
 		semi_join(top_dset_per_gene, by = c('GN', 'gene_name')) %>%
