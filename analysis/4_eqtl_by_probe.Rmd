@@ -383,7 +383,7 @@ h6 {font-size: 0.75em}
 		)
 	p = plot_grid(msh3_tx, msh3_lod, ncol = 1, align = 'v', axis = 'lr', rel_heights = c(1.2, 1))
 	p
-	ggsave('../pdfs/SuppFig17_probe-level analysis_1.pdf', p, w = 9, h = 5.5)
+	ggsave('../pdfs/SuppFig17_probe-level analysis_1.pdf', p, w = 11, h = 5.5)
 ```
 
 ## Zoom w/ probe positions
