@@ -102,3 +102,5 @@ Figures:
 * Supp Figure 15: Redo QTL with subsets
 * Supp Figure 16: summary of availability of expression datasets
 * Supp Figure 18: summary of eQTL results
+* Supp Figure 20: co-localization of QTL/eQTL signals
+* 4a: traces of best eQTL signals

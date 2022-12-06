@@ -764,9 +764,49 @@ Various ways to rank:
 				 guide = guide_colorsteps(title = 'maxLOD', barheight = unit(0.5, 'npc'))
 		)
 	p_filt
-	ggsave('test.pdf', p_filt, w = 14, h = 10)
-	
+
 	ggsave('../pdfs/SuppFig18_eQTLSummary.pdf', p_filt, w = 14, h = 10)
+```
+
+## Single panel version
+
+#. Signal from best dataset for each gene is shown
+	
+```{r echo=TRUE, fig.width = 6, fig.height = 5, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# xlims = c(0, 125)
+	xlims = c(55, 110)
+	to_plt = best_trace %>% 
+		# dense_traces$signal %>% left_join(dense_traces$markers, by = 'marker') %>%
+		semi_join(eqtl_dsets_genes, by = c('GN', 'gene_name')) %>%
+		left_join(gene_ord %>% select(gene_name, gene_pos, Rank), by = 'gene_name') %>%
+		filter(gene_name %in% dna_repair_genes) %>%
+		mutate(gene_name = fct_reorder(gene_name, gene_pos)) %>%
+		semi_join(top_dset_per_gene, by = c('GN', 'gene_name')) %>%
+		rename(pos = mark_pos)
+	p1 = to_plt %>%
+		# mutate(gene_name = fct_relevel(gene_name, genes_to_lab)) %>%
+		ggplot(aes(pos, LODadj, color = gene_name)) + 
+		geom_step() +
+		# scale_color_brewer(palette = 'Dark2', guide = guide_legend(title = 'eQTL signal')) + 
+		# scale_color_viridis_d(guide = guide_legend(title = 'eQTL signal')) + 
+		scale_color_manual(values = gene_pal) + 
+		coord_cartesian(xlim = xlims) + 
+		theme_half_open() + 
+		theme(legend.position = 'right')
+	p2 = final_res %>%
+		filter(metric == '% expanded', chr == 'chr13') %>%
+		mutate(across(c(pos, end), ~.x/1e6)) %>%
+		ggplot(aes(pos, LOD, color = metric)) +  
+		geom_step() +
+		scale_color_manual(values = 'black', guide = guide_legend(title = 'QTL signal')) +
+		coord_cartesian(xlim = xlims) + 
+		theme_half_open() 
+	p = plot_grid(p1, p2, ncol = 1, axis = 'lr', align = 'v', rel_heights = c(1, 0.7))
+	p
+	# this will be the first panel of a supplementary figure
+	psupp_corr_a = p
+	ggsave('../pdfs/Fig4a.pdf', p_filt, w = 14, h = 10)
+
 ```
 
 
