@@ -1,0 +1,1396 @@
+---
+title: "BXD consortium paper figures"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  html_document:
+      toc: yes
+      toc_float: true
+---
+
+<!-- Set with output width -->
+<style type="text/css">
+.main-container {
+    max-width: 1000px;
+    margin-left: auto;
+    margin-right: auto;
+}
+</style>
+
+```{r setup, include=FALSE}
+    # clean vars
+    rm(list = ls())
+
+    # options
+    knitr::opts_chunk$set(echo = TRUE)
+    options(stringsAsFactors = FALSE, dplyr.summarise.inform = FALSE)
+
+    # libraries
+    library(tidyverse)
+    library(cowplot)
+    library(fs)
+    library(skimr)
+    library(DBI)
+    library(dbplyr)
+    library(ggpubr)
+    library(ggfortify)
+    library(RColorBrewer)
+    library(ggrastr)
+
+    # set up directory for plotting
+    #plot_dir = 'BXD_consortium_figures_pub_plots_v3'; dir_create(plot_dir)
+```
+
+<details>
+  <summary><b>LOAD MOTIF INFO DATA</b></summary>
+```{r load motif info data, cache = TRUE, cache.extra = Sys.Date()}
+    # config
+    # this file has motif info for all STRs found by TRF after filtering compound, imperfect, short ... etc.
+    # used in multiple other sections
+    motif_info_file = '../data/str_regions_mm10_filt_w_hom.tsv.gz'
+    
+    # read motif info file
+    motif_info = read_tsv(motif_info_file, col_types = cols()) %>%
+	mutate_at(c('pos', 'end', 'motif_len', 'unq_motif_len', 'A', 'C', 'G', 'T'), as.integer)
+```
+</details>
+
+<details>
+  <summary><b>LOAD REF SET INFO</b></summary>
+```{r load reference set data, cache = TRUE, cache.extra = Sys.Date()}
+    # visualizing repeat variation in BXD
+    # start with __filtered__ TRF and 
+    # make sure to include homopolymers
+    # unfiltered TRF doesn't make sense because we don't know if these are real repeats
+    # assign the following categories to each locus in this priority
+    # which will take care of loci that may be both zv_hetonly and filtered
+    # lvl1: not genotyped
+    # lvl2: monoallelic (combines zero-variance and hetonly)
+    # lvl3: filtered (combines segdup + lowcr loci)
+    # lvl3: segregating (these have variance and segregate across RIL)
+
+    # config
+    ref_dir = '../data'
+
+    # load list of excluded loci
+    exclude_regs_list = list(
+	lowcr       = 'lowcr_strs.bed',
+	segdup      = 'segdup_strs.bed',
+	monoallelic = 'zv_hetonly_strs.bed'
+    )
+    exclude_regs = map_df(exclude_regs_list, function(f) {
+	read_tsv(sprintf('%s/exclude/%s', ref_dir, f),
+		 col_names = c('chr', 'pos', 'end'), 
+		 col_types = cols('c', 'i', 'i'))
+    }, .id = 'loc_cat')
+
+    # recode segdup and lowcr into filtered
+    exclude_regs = exclude_regs %>%
+	mutate(loc_cat = recode(loc_cat, lowcr = 'filtered', segdup = 'filtered'))
+
+    # load list of successfully genotyped loci
+    success_gt_regs = read_tsv(sprintf('%s/%s', ref_dir, 'str_regions.bed'),
+			       col_names = c('chr', 'pos', 'end'), 
+			       col_types = cols('c', 'i', 'i')) %>%
+	mutate(loc_cat = 'segregating')
+    
+    # define priority levels
+    loc_cat_lvls = c('not genotyped', 'monoallelic', 'filtered', 'segregating')
+
+    # join locus categories only strs with motif_len information
+    strs_in_mm10 = motif_info %>%
+	filter(chr %in% str_c('chr', 1:19)) %>%
+	select(chr, pos, end, motif_len) %>%
+	left_join(bind_rows(exclude_regs, success_gt_regs),
+		  by = c('chr', 'pos', 'end')) %>%
+	mutate(loc_cat = replace_na(loc_cat, 'not genotyped')) %>%
+	mutate(loc_cat = fct_relevel(loc_cat, loc_cat_lvls))
+
+    # keep the top priority label
+    strs_in_mm10 = strs_in_mm10 %>%
+	mutate(loc_cat_ord = as.integer(fct_relevel(loc_cat, loc_cat_lvls))) %>%
+	unite('locus', c('chr', 'pos', 'end'), remove = FALSE) %>%
+	arrange(loc_cat_ord) %>%
+	filter(!duplicated(locus))
+
+    # check
+    # strs_in_mm10 %>% distinct(loc_cat)
+    # strs_in_mm10 %>% 
+    #	filter(motif_len != 1 & loc_cat == 'not genotyped') %>%
+    #	group_by(motif_len) %>%
+    #	sample_n(1) %>%
+    #	select(locus, motif_len)
+```
+</details>
+
+<details>
+  <summary><b>LOAD CALL QUALITY DATA</b></summary>
+```{r load call quality data, cache = TRUE, cache.extra = Sys.Date()}
+    # custom boxplotting function
+    # vec = per_loc_stats %>% filter(!is.na(avg_q)) %>% pull(avg_q)
+    bxplt_smry = function(vec) {
+	# default ggplot for whiskers 
+	# upper: from hinge to the largest value no further than 1.5*IQR from the hinge
+	# loer: from hinge to the smallest value no further than 1.5*IQR from the hinge
+	iqr = IQR(vec, na.rm = TRUE)
+	qs = quantile(vec, probs = c(0.25, 0.75), na.rm = TRUE)
+	wisk_lower = min(vec[which(vec >= (qs[1] - 1.5*iqr))])
+	wisk_upper = max(vec[which(vec <= (qs[2] + 1.5*iqr))])
+	tibble(min = min(vec, na.rm = TRUE),
+	       wisk_lower = wisk_lower,
+	       lower = qs[1],
+	       middle = median(vec, na.rm = TRUE),
+	       avg = mean(vec, na.rm = TRUE),
+	       upper = qs[2],
+	       wisk_upper = wisk_upper,
+	       max = max(vec, na.rm = TRUE),
+	       n = length(vec),
+	       n_na = sum(is.na(vec))
+	)
+    }
+
+    # config
+    # stats taken directly from vcf after genotyping and before filtering zv, hetonly, segdup and lowcr loci
+    per_loc_stats_file = '../data/from_vcf/str_per_loc.tsv'
+
+    # load per locus stats for strs
+    per_loc_stats = read_tsv(per_loc_stats_file, col_types = cols())
+
+    # join motif information
+    per_loc_stats = per_loc_stats %>% left_join(motif_info, by = c('chr', 'pos', 'end'))
+
+    # make boxplot summaries for average locus Q and average locus DP
+    # to demonstrate the dinucs have lower call quality that higher motif length repeats
+    q_bxp = per_loc_stats %>%
+	filter(!is.na(avg_q)) %>%
+	mutate(motif_len = factor(motif_len)) %>%
+	group_by(motif_len) %>%
+	# group_modify(~broom::tidy(summary(.x$avg_q)))
+	group_modify(~bxplt_smry(.x$avg_q)) %>%
+	ungroup
+```
+</details>
+
+<details>
+  <summary><b>LOAD N_UNQ_GT</b></summary>
+```{r per loc STR data, cache = TRUE, cache.extra = Sys.Date()}
+    # read per loc data from vcf
+    read_per_loc_all = function(in_dir) {
+	homhet_files = list.files(in_dir, patter = '\\.tsv')
+	homhet_smry = plyr::adply(homhet_files, 1, function(f) {
+	  print(f)
+	  dfin = read.table(paste0(in_dir, '/', f), sep = '\t', header = TRUE) %>%
+	      select(chrom, pos, end, het, hom, nocall, n_unq_gt_w_het, n_unq_gt_wo_het) %>%
+	      rename(chr = chrom)
+	  return(dfin)
+	}, .id = NULL) %>% as_tibble
+	return(homhet_smry)
+    }
+
+    # read per loc data from .sqlite db (pre/post imputation)
+    read_per_loc = function(in_file) {
+	homhet_smry = read_tsv(in_file,
+			       col_types = cols(
+				  chr = col_character(),
+				  pos = col_double(),
+				  end = col_double(),
+				  het = col_double(),
+				  hom = col_double(),
+				  nocall = col_double(),
+				  n_unq_gt_w_het = col_double(),
+				  n_unq_gt_wo_het = col_double(),
+				  call = col_double(),
+				  strains = col_double(),
+				  CR = col_double()
+				))
+	return(homhet_smry %>% select(chr, pos, end, het, hom, nocall, n_unq_gt_w_het, n_unq_gt_wo_het))
+    }
+
+
+    # config
+    # locus level stats from 3 sources:
+    #	* from vcf after genotyping and before filtering zv, hetonly, segdup and lowcr loci
+    #   * after making sqlite db before imputation
+    #	* after imputation
+    #	* plotting "all" and "post_imp" for now, but in future versions may plot only post-imputation
+    # NOTE: heterozygocity is calculated in same scripts, but we are interested in n_unq_gt only here
+    homhet_from_vcf_dir = '../data'
+    homhet_imputed_dir = '../data'
+    # load per loc data summarized directly from vcf
+    per_loc_str_all = read_per_loc_all(paste0(homhet_from_vcf_dir, '/', 'by_loc_str')) %>%
+	select(chr, pos, end, contains('n_unq_gt'))
+
+    # load per loc data for imptued loci before imputation
+    per_loc_str_pre_imp  = read_per_loc(sprintf('%s/from_db/%s_per_loc.tsv', homhet_imputed_dir, 'str', 'str')) %>%
+	select(chr, pos, end, contains('n_unq_gt'))
+
+    # load per loc for imputed loci after filtering out low call rate loci (final set that is used)
+    per_loc_str_post_imp = read_per_loc(sprintf('%s/from_db/%s_per_loc_imp.tsv', homhet_imputed_dir, 'str', 'str')) %>%
+	select(chr, pos, end, contains('n_unq_gt'))
+    
+    # combine per loc data
+    per_loc_str = bind_rows(
+	per_loc_str_all      %>% mutate(loc_list = 'all'),
+	per_loc_str_pre_imp  %>% mutate(loc_list = 'pre_imp'),
+	per_loc_str_post_imp %>% mutate(loc_list = 'post_imp')
+    )
+   
+    # summarise counts of the number of alleles per STR
+    alleles_per_str = per_loc_str %>%
+	filter(loc_list %in% c('all', 'post_imp')) %>%
+	pivot_longer(cols = contains('n_unq_gt'), names_to = 'var', values_to = 'n_unq_gt', names_prefix = 'n_unq_gt_') %>%
+	group_by(loc_list, var) %>%
+	count(n_unq_gt, name = 'n_loci') %>%
+	ungroup
+```
+</details>
+
+<details>
+  <summary><b>LOAD PER-STRAIN HETEROZYGOCITY DATA</b></summary>
+```{r load homhet data, cache = TRUE, cache.extra = Sys.Date()}
+    # config
+    homhet_imputed_dir = '../data'
+    
+    # read per strain data from .sqlite db (pre/post imputation)
+    read_per_strain_homhet = function(in_file) {
+	homhet_smry = read_tsv(in_file, col_types = cols())
+	homhet_smry = homhet_smry %>%
+	    select(strain, chr, het, hom, nocall) %>%
+	    gather(var, val, het, hom, nocall) %>%
+	    group_by(strain, var) %>%
+	    summarise(val = sum(val)) %>%
+	    spread(var, val) %>%
+	    ungroup
+	return(homhet_smry)
+    }
+
+    # read per loc data from .sqlite db (pre/post imputation)
+    # NOTE: saving this function for completeness, but don't actually need per-locus heterozygocity for this reports 
+    read_per_loc_homhet = function(in_file) {
+	homhet_smry = read_tsv(in_file, col_types = cols())
+	return(homhet_smry %>% select(chr, pos, end, het, hom, nocall, n_unq_gt_w_het, n_unq_gt_wo_het))
+    }
+    
+    # load per strain data for filtered loci after imputation
+    per_strain_homhet_str = read_per_strain_homhet(sprintf('%s/from_db/%s_per_strain_imp.tsv', homhet_imputed_dir, 'str', 'str'))
+    per_strain_homhet_snp = read_per_strain_homhet(sprintf('%s/from_db/%s_per_strain_imp.tsv', homhet_imputed_dir, 'snp', 'snp'))
+
+    # combine per strain data
+    per_strain_homhet = bind_rows(
+	per_strain_homhet_str %>% mutate(loc_type = 'str'),
+	per_strain_homhet_snp %>% mutate(loc_type = 'snp')
+    )
+```
+</details>
+
+<details>
+  <summary><b>LOAD INHERITANCE DATA</b></summary>
+```{r load inheritance, cache = TRUE, cache.extra = Sys.Date()}
+    # config
+    inherit_smry_dir = '../data/inherit_smry'
+    epoch_detail_file = '../data/bxd_strain_names_plus.tsv'
+
+    # read data summaries
+    # these data are pre-summarised, because per-locus for SNP objects are too large
+    by_strain_inherit_perc = readRDS(sprintf('%s/by_strain_inherit_perc.rds', inherit_smry_dir))
+    by_loc_inherit_boxplot = readRDS(sprintf('%s/by_loc_inherit_boxplot.rds', inherit_smry_dir))
+    inherit_blocks         = readRDS(sprintf('%s/major_blocks.rds', inherit_smry_dir))
+    inherit_wind           = readRDS(sprintf('%s/inherit_wind.rds', inherit_smry_dir))
+
+    # load detailed epoch information
+    epoch_detail = read_tsv(epoch_detail_file, col_types = cols())
+
+    # fix a likely typo in the number of inbreeding generations for BXD29
+    epoch_detail$gen_inbreeding[epoch_detail$bxd_id == 'BXD029'] = 158
+    epoch_detail = epoch_detail %>% mutate(gen_outbreeding = gen_breeding - gen_inbreeding)
+
+    # calculate genome-wide average by strain
+    newvar_perc_per_strain = by_strain_inherit_perc %>%
+	filter(loc_type == 'str') %>%
+	# sum across chromosomes
+	group_by(strain, lab) %>%
+	summarise(n = sum(n)) %>%
+	group_by(strain) %>%
+	mutate(perc = n*100/sum(n)) %>%
+	ungroup
+
+    # join detailed epoch information 
+    newvar_perc_per_strain = newvar_perc_per_strain %>% 
+	left_join(epoch_detail %>% 
+		    select(bxd_id, off_epoch, gen_inbreeding, gen_breeding, gen_outbreeding, cross_type), 
+		  by = c('strain' = 'bxd_id')) %>%
+	mutate(off_epoch = recode(off_epoch, epoch_1b = 'epoch_1a', epoch_1c = 'epoch_1a')) %>%
+	separate('off_epoch', c(NA, 'off_epoch_id'), remove = FALSE)
+
+    # calculate correlation between snp and str blocks
+    pears_cor_smry = inherit_wind %>%
+	group_by(strain, chr, lab) %>%
+	group_modify(.f = function(.x, .y) {
+	    casted = .x %>% 
+		pivot_wider(id_cols = everything(), names_from = 'loc_type', 
+			    values_from = 'perc', values_fill = list(perc = NA))
+	    tibble(pears_cor = cor(x = casted$str, y = casted$snp, method = 'pearson', use = 'pairwise.complete.obs'))
+	}) %>%
+	ungroup
+```
+</details>
+
+<details>
+  <summary><b>LOAD FOUNDER DIFF DATA</b></summary>
+```{r load founder difference, cache = TRUE, cache.extra = Sys.Date()}
+    # config
+    str_gt_db = '../data/imp_str_gt.sqlite'
+    strain_compare_dir = '../../data/strain_compare/'
+    chroms = paste0('chr', 1:19); names(chroms) = chroms
+    strain_compare_dir = '../../data/strain_compare/'
+
+    # connect to the database with imputed STR calls and pull genotypes for founder strains
+    conn = dbConnect(RSQLite::SQLite(), str_gt_db)
+    founder_str_gt = tbl(conn, sql("select * from str_gt_imp
+				   left join strains using ('strain_id')
+				   where strain_id in (160, 161)")) %>% collect()
+    dbDisconnect(conn)
+
+    # TODO: use RN_T just like in function below
+    # founder_gt = founder_str_gt
+    calc_diff_from_ref = function(founder_gt, hom_only = FALSE) {
+	# add hom/het label
+	founder_gt = founder_gt %>% mutate(is_het = RN_A != RN_B)
+	# founder_gt %>% count(is_het)
+
+	# filter out heterozygous loci
+	# as a result we will only get difference measurements from loci where both founders are homozygous 
+	if (hom_only) founder_gt = founder_gt %>% filter(!is_het)
+
+	# pivot long by allele and calculate difference between founder and references
+	founder_gt = founder_gt %>%
+	    left_join(motif_info %>% 
+			select(chr, pos, end, motif_len) %>% 
+			mutate(n_rep_ref = (end - pos + 1)/motif_len) %>%
+			select(chr, pos, end, n_rep_ref), by = c('chr', 'pos', 'end')) %>%
+	    select(chr, pos, end, founder = strain, RN_A, RN_B, REF = n_rep_ref) %>%
+	    pivot_longer(cols = matches('_[AB]'), names_to = 'al', values_to = 'gt') %>%
+	    mutate(delta_ref = gt - REF)
+
+	# make table: DBA, C57BL, n_loci; founder columns stand for (DBA|C57)_diff_from_ref
+	is_diff_ref_counts = founder_gt %>%
+	    mutate(is_diff_from_ref = delta_ref != 0) %>%
+	    # mutate(founder = str_c(founder, '_diff_from_ref')) %>%
+	    pivot_wider(id_cols = c('chr', 'pos', 'end'),
+			names_from = 'founder',
+			values_from = 'is_diff_from_ref',
+			values_fn = list(is_diff_from_ref = any)) %>% # need aggregation function because of alleles
+	    count(DBA, C57BL, name = 'n_loci')
+
+	# add a text label
+	is_diff_ref_counts = is_diff_ref_counts %>%
+	    mutate(type = case_when(
+		!is.na(DBA) & !is.na(C57BL) & DBA & C57BL ~ 'diff_from_ref_both',
+		DBA | C57BL ~ 'diff_from_ref_either',
+		TRUE ~ 'same_as_ref')) %>%
+	    arrange(type)
+
+	# make a data.frame for histogram plot: founder {C57, DBA}, delta_ref {1, 2, -1, 5 ...}, n_als
+	delta_ref_counts = founder_gt %>%
+	    filter(!is.na(delta_ref)) %>%
+	    filter(delta_ref != 0) %>%
+	    count(founder, delta_ref, name = 'n_als') %>%
+	    mutate(n_als_gt = (founder_str_gt %>% distinct(chr, pos, end) %>% nrow)*4,
+		   freq_gt = n_als/n_als_gt) %>% # this is relative to total genotyped alleles
+	    group_by(founder) %>%
+	    mutate(freq = n_als/sum(n_als)) %>% # essentially normalized to area = 1
+	    ungroup
+
+	# output
+	return(list(is_diff_ref_counts = is_diff_ref_counts, delta_ref_counts = delta_ref_counts))
+    }
+    
+    # founder_gt = founder_str_gt; hom_only = TRUE
+    calc_diff_bw_found = function(founder_gt, hom_only = FALSE) {
+	# add hom/het label
+	founder_gt = founder_gt %>% mutate(is_het = RN_A != RN_B)
+	# founder_gt %>% count(is_het)
+
+	# filter out heterozygous loci
+	# as a result we will only get difference measurements from loci where both founders are homozygous 
+	if (hom_only) founder_gt = founder_gt %>% filter(!is_het)
+
+	# pivot wide by founder and calculate difference between total dosage in founder
+	# founder_gt = founder_gt %>%
+	#     select(chr, pos, end, founder = strain, RN_A, RN_B) %>%
+	#     pivot_longer(cols = matches('_[AB]'), names_to = 'al', values_to = 'gt') %>%
+	#     pivot_wider(id_cols = c('chr', 'pos', 'end', 'al'), names_from = 'founder', values_from = 'gt') %>%
+	#     mutate(delta_found = abs(DBA - C57BL))
+
+	# need to cross in stead of pivot to get every combination of differences
+	delta_found = full_join(
+		founder_gt %>%
+		    select(chr, pos, end, founder = strain, RN_A, RN_B) %>%
+		    pivot_longer(cols = matches('_[AB]'), names_to = 'al', values_to = 'gt') %>%
+		    filter(founder == 'C57BL') %>% select(-founder),
+		founder_gt %>%
+		    select(chr, pos, end, founder = strain, RN_A, RN_B) %>%
+		    pivot_longer(cols = matches('_[AB]'), names_to = 'al', values_to = 'gt') %>%
+		    filter(founder == 'DBA') %>% select(-founder), 
+		by = c('chr', 'pos', 'end')) %>%
+	    mutate(delta_found = abs(gt.x - gt.y)) %>%
+	    filter(!is.na(delta_found)) %>%
+	    filter(delta_found != 0) %>%
+	    distinct(chr, pos, end, delta_found) %>%
+	    group_by(chr, pos, end) %>%
+	    # if only hom loci, then 1 row per locus, if hom and het then multiple rows per locus
+	    # reduce to one row per locus
+	    top_n(1, delta_found) %>% # keep longest difference
+	    ungroup
+
+	# make list of loci where founder differ
+	found_diff_loci = founder_gt %>% 
+	    select(chr, pos, end, matches('_[AB]'), strain) %>%
+	    semi_join(delta_found, by = c('chr', 'pos', 'end'))
+	
+	# make a data.frame for histogram plot: delta_found {1, 2, -1, 5 ...}, n_loci
+	found_diff_counts = delta_found %>%
+	    count(delta_found, name = 'n_loci') %>%
+	    mutate(freq = n_loci/sum(n_loci))
+
+	# output
+	return(list(found_diff_loci = found_diff_loci, found_diff_counts = found_diff_counts))
+    }
+
+    # calculate difference b/w c57, dba and reference (use both hom and het loci or only hom loci)
+    ret_homhet                 = calc_diff_from_ref(founder_str_gt, hom_only = FALSE)
+    ret_homonly                = calc_diff_from_ref(founder_str_gt, hom_only = TRUE)
+    is_diff_ref_counts_homhet  = ret_homhet$is_diff_ref_counts
+    is_diff_ref_counts_homonly = ret_homonly$is_diff_ref_counts
+    delta_ref_counts_homhet    = ret_homhet$delta_ref_counts
+    delta_ref_counts_homonly   = ret_homonly$delta_ref_counts
+
+    # calculate difference b/w c57 and dba (use both hom and het loci or only hom loci)
+    ret_homhet  = calc_diff_bw_found(founder_str_gt, hom_only = FALSE)
+    ret_homonly = calc_diff_bw_found(founder_str_gt, hom_only = TRUE)
+    found_diff_loci_homhet    =  ret_homhet$found_diff_loci
+    found_diff_loci_homonly   = ret_homonly$found_diff_loci
+    found_diff_counts_homhet  =  ret_homhet$found_diff_counts
+    found_diff_counts_homonly = ret_homonly$found_diff_counts
+    
+    if (0) { # legacy code that works from pre-computed values. It would be cleaner to do this directly from imputed genotypes
+	# read loci where c57 and dba founder strains differ from each other along with the length of the reference allele
+	loci_of_diff = map_df(chroms, function(chrom) {
+	    map_df(list(str = 'str'), function(loc_type) { # no need to load SNP data, b/c not using it although it is available
+		read_tsv(sprintf('%s/%s/c57_dba_smry/%s_loci_of_diff.tsv', strain_compare_dir, loc_type, chrom),
+			 col_types = cols()
+		)
+	    }, .id = 'loc_type')
+	})
+	
+	# pivot long by allele
+	c57_dba_diff = loci_of_diff %>%
+	    pivot_longer(cols = one_of(c('C57_A', 'C57_B', 'DBA_A', 'DBA_B')), 
+			 names_to = 'allele',
+			 values_to = 'gt')
+
+	# cross C57 and DBA genotypes for same locus    
+	c57_dba_diff = c57_dba_diff %>% filter(grepl('C57', allele)) %>%
+	    left_join(c57_dba_diff %>% filter(grepl('DBA', allele)),
+		      by = c('loc_type', 'chr', 'pos', 'end', 'REF')) %>%
+	    mutate(c57_dba_diff = abs(gt.x - gt.y))
+    }
+
+    # calculate number and percentage of loci where founders differ from each other.
+    n_loci_of_diff_from_ref = nrow(found_diff_loci_homonly %>% distinct(chr, pos, end))
+    tot_seg_str_loci = founder_str_gt %>% distinct(chr, pos, end) %>% nrow 
+    diff_from_ref_lab = sprintf('%s (%0.1f%%)', scales::comma(n_loci_of_diff_from_ref), n_loci_of_diff_from_ref*100/tot_seg_str_loci)
+
+    # calculate the median difference in repeat unit between founders
+    mean_found_diff = found_diff_counts_homonly %>% mutate(x = delta_found*freq) %>% pull(x) %>% sum()
+```
+</details>
+
+<details>
+  <summary><b>LOAD GENO DATA</b></summary>
+```{r load geno data, cache = TRUE, cache.extra = Sys.Date()}
+    # function for reading and processing genotype files
+    read_and_proc_geno = function(geno_dir, geno_files) {
+
+	# user out
+      
+	print('Loading geno files')
+
+	# separate geno file names
+	geno_files = str_split(geno_files, ',')[[1]]
+
+	# open the geno file
+	inherit_smry = map_df(geno_files, function(geno_file) {
+	    # user out
+	    print(sprintf('Reading %s', geno_file))
+
+	    # read files
+	    inherit_smry = read_tsv(sprintf('%s/%s', geno_dir, geno_file), 
+			    col_types = cols(locus = col_character(), 
+					     .default = col_character())) %>%
+		       separate('locus', c('chr', 'pos', 'end')) %>%
+		       mutate_at(c('pos', 'end'), as.integer) %>%
+		       gather(strain, lab, matches('BXD.*'))
+	    
+	    # check
+	    # inherit_smry %>% distinct(lab)
+
+	    # replace NA with no-call
+	    inherit_smry = inherit_smry %>% mutate(lab = replace_na(lab, 'no-call'))
+	    
+	    # convert BN, DN, NN to N
+	    inherit_smry = inherit_smry %>% mutate(lab = if_else(lab %in% c('BN', 'DN', 'NN', 'FN'), 'N', lab))
+
+	    # convert pos to Mb
+	    inherit_smry = inherit_smry %>% ungroup %>% mutate(Mb = pos/1e6)
+	})
+
+	# output
+	return(inherit_smry %>% select(chr, pos, end, strain, lab, Mb))
+    }
+
+    # load .geno files for each chromosome
+    # NOTE: this is needed to create a locus_by_epoch matrix for K-means clustering of new across epochs
+    geno_dir = '../data/all_imputed'
+    chroms = str_c(sprintf('chr%d.geno', 1:19), collapse = ',')
+    inherit_smry = read_and_proc_geno(geno_dir, chroms)
+
+    # recode labels in inherit_smry
+    recodings = c(BB = 'B', DD = 'D', NN = 'N',
+		  FF = NA_character_, ff = NA_character_,
+		  dd = 'D', bb = 'B', bd = 'H',
+		  nn = 'HN', bn = 'HN', dn = 'HN', fn = 'HN', 
+		  bf = NA_character_, df = NA_character_)
+    inherit_smry = inherit_smry %>% 
+	mutate(lab = recode(lab, !!!recodings)) %>%
+	unite('locus', c('chr', 'pos', 'end'))
+    
+    # calculate number of B/D/H/N strains per locus
+    strains_per_loc = inherit_smry %>% 
+	count(locus, lab, name = 'n_strains') %>%
+	filter(!is.na(lab))
+
+    # make a list of loci containing denovo str variants
+    denovo_loci = strains_per_loc %>%
+	complete(locus, lab, fill = list(n_strains = 0)) %>%
+	filter(lab == 'N' & n_strains != 0)
+```
+</details>
+
+<details>
+  <summary><b>PCA</b></summary>
+```{r PCA, cache = TRUE, cache.extra = Sys.Date()}
+    # use only denovo loci for PCA
+    denovo_inherit_smry = inherit_smry %>%
+        semi_join(denovo_loci, by = 'locus') %>%
+        select(-Mb)
+    
+    # form the strain by locus matrix for PCA
+    strain_by_loc = denovo_inherit_smry %>%
+        mutate(present = 1) %>%
+        pivot_wider(id_cols = c('locus', 'strain'), names_from = 'lab', 
+         	   values_from = 'present', values_fill = list(present = 0)) %>%
+        mutate(has_newvar = N) %>% # this could also be HN + N
+        select(locus, strain, has_newvar) %>%
+        pivot_wider(id_cols = 'strain', names_from = 'locus', values_from = 'has_newvar')
+```
+</details>
+
+```{r scales and levels, echo = FALSE}
+    # color scale
+    col_vals = c('B' = 'forestgreen', 'D' = 'dodgerblue', 'H' = 'black', 'F' = 'darkslateblue', 
+		 'N' = 'darkorchid4', 'HN' = 'darkorchid3', 'no-call' = 'gray70')
+
+    # define strain ordering
+    strain_lvls = by_strain_inherit_perc %>% pull(strain) %>% unique
+    strain_lvls = str_sort(strain_lvls, numeric = TRUE)
+    
+    # locus types
+    loc_types = list(str = 'str', snp = 'snp')
+
+    # epoch colors
+    epoch_colors <- colorRampPalette(brewer.pal(8, "Paired"))(10)
+```
+
+<mark>TODO:</mark>
+
+#. Add data source to description of every figures.
+#. Update infoirmation on .geno file encodings.
+
+### Figure B: description of reference set
+
+#. Start with TRF results after filtering out compound, short, imperfect repeats and repeat bundles.
+#. "not genotyped": homopolymers were not genotyped and a very small fraction of STRs with larger motif lengths were skpped by GangSTR for various reasons.
+#. "monoallelic": also includes 100% no-call loci (after individual call filtering with DumpSTR) and "het-only" loci.
+#. "filtered": loci overlapping with segmental duplications and low call rate loci (>50 no-call strains).
+#. "segregating": loci that segrate among the BXD.
+
+```{r describe ref set figure, echo=FALSE, fig.width = 6, fig.height = 4, fig.align = 'center', eval = TRUE}
+    p = strs_in_mm10 %>%
+	count(motif_len, loc_cat, name = 'n_loci') %>%
+	filter(motif_len <= 10) %>%
+	ggplot(aes(motif_len, n_loci, fill = loc_cat)) +
+	geom_bar(stat = 'identity') +
+	scale_fill_brewer(palette = 'Paired') +
+	scale_x_continuous(breaks = function(x) seq(1, x[2], 2), 
+			   expand = expansion(mult = 0, add = 1)) + 
+	coord_cartesian(xlim = c(1, NA)) +
+	theme_half_open() +
+	theme(legend.position = c(1, 1),
+	      legend.justification = c(1, 1)) +
+	guides(fill = guide_legend(title = NULL)) + 
+	labs(x = 'Motif length', y = 'Locus count')
+    p
+    fig_B = p
+    ggsave('../pdfs/figure_2B.pdf', plot = fig_B, w = 6, h = 4)
+```
+
+```{r describe ref set tables, echo = FALSE}
+    knitr::kable(strs_in_mm10 %>%
+	count(loc_cat, name = 'n_loci') %>%
+	mutate(perc = n_loci*100/sum(n_loci)))
+```
+
+### Figure D: variant size relative to mm10
+
+#. Use imputed genotypes for filtered locus sets (wo_zv, wo_hetonly, wo_segdup, wo_lowcr).
+#. Make list of all loci where either C57 or DBA differs from the mm10 reference.
+#. Calculate the difference in repeat number between each founder allele and the reference allele.
+#. Left panel: use both hom and het loci.
+#. Right panel: use only hom loci (this will be the final version of the plot).
+
+```{r var relative to mm10, echo=FALSE, fig.width = 8, fig.height = 4, fig.align = 'center', eval = TRUE}
+    p_base = ggplot(data = NULL, aes(delta_ref, n_als)) +
+	geom_bar(stat = 'identity') +
+	geom_text(data = function(x) x %>% group_by(founder) %>% summarise(tot_als = sum(n_als)),
+		  aes(label = sprintf('N: %s', scales::comma(tot_als))), inherit.aes = FALSE,
+		  x = Inf, y = Inf, hjust = 'inward', vjust = 1.5) +
+	scale_y_continuous(labels = scales::comma) + 
+	coord_cartesian(xlim = c(-20, 20)) +
+	facet_wrap(~founder, nrow = 2, scales = 'free_y') +
+	theme_half_open() +
+	theme(plot.title = element_text(hjust = 0.5, size = 10),
+	      # strip.background = element_rect(fill = NA, color = 'black', size = 1),
+	      ) +
+	labs(x = 'Delta reference (RU)', y = 'Allele count')
+    p1 = p_base %+% delta_ref_counts_homhet + ggtitle('Hom and het loci')
+    p2 = p_base %+% delta_ref_counts_homonly + ggtitle('Hom loci only')
+    p = plot_grid(p1, p2, nrow = 1)
+    p
+    fig_D = p2 + ggtitle('')
+    ggsave('../pdfs/figure_2D.pdf', plot = fig_D, w = 6, h = 4)
+```
+
+Loci counts where either C57, DBA or both vary from the reference (only homozygous loci).
+
+```{r var relative to ref table smry, echo = FALSE}
+    knitr::kable(is_diff_ref_counts_homonly %>%
+		    group_by(type) %>%
+		    summarise(n_loci = sum(n_loci)))
+```
+
+Percent expansions/contractions (only homozygous loci).
+
+```{r perc expand/contract, echo=FALSE}
+    knitr::kable(delta_ref_counts_homonly %>%
+	    mutate(diff_type = if_else(delta_ref > 0, 'expansion', 'contraction')) %>%
+	    group_by(founder, diff_type) %>%
+	    summarise(tot_freq = sum(freq)))
+```
+
+### Figure Ca: RU difference b/w C57 and DBA
+
+#. Take founder calls after imputation for filtered locus sets.
+#. Filter out heterozygous loci (right panel) or keep them (left panel) separately for each founder.
+#. Take difference between every C57 allele and every DBA allele at every locus.
+#. Remove missing values (in case one founder was heterozygous).
+#. Remove difference of zero.
+#. Keep biggest differece per locus to have only a single value per locus (this doesn't affect only homozygous version).
+#. Count.
+
+```{r echo=FALSE, fig.width = 8, fig.height = 4, fig.align = 'center', eval = TRUE}
+    p1 = found_diff_counts_homhet %>%
+	ggplot(aes(delta_found, freq)) +
+	geom_bar(stat = 'identity') +
+	geom_text(data = function(x) x %>% summarise(N = sum(n_loci)),
+		  aes(label = sprintf('N loci: %s', scales::comma(N))), 
+		      x = Inf, y = Inf, hjust = 'inward', vjust = 'inward') + 
+	theme_half_open() +
+	theme(plot.title = element_text(hjust = 0.5)) +
+	coord_cartesian(xlim = c(0, 20)) + 
+	xlab(expression(abs(C57-DBA)~(RU))) +
+	ylab('Frequency')
+    p2 = found_diff_counts_homonly %>%
+	ggplot(aes(delta_found, freq)) +
+	geom_bar(stat = 'identity') +
+	geom_text(data = function(x) x %>% summarise(N = sum(n_loci)),
+		  aes(label = sprintf('N loci: %s', scales::comma(N))), 
+		      x = Inf, y = Inf, hjust = 'inward', vjust = 'inward') + 
+	theme_half_open() +
+	theme(plot.title = element_text(hjust = 0.5)) +
+	coord_cartesian(xlim = c(0, 20)) + 
+	xlab(expression(abs(C57-DBA)~(RU))) +
+	ylab('Frequency')
+    p = plot_grid(p1, p2, nrow = 1)
+    p
+    fig_Ca = p2
+    ggsave('../pdfs/figure_2Ca.pdf', plot = fig_Ca, w = 6, h = 4)
+
+```
+
+Only consider homozygous loci. Founder strains vary at `r diff_from_ref_lab` loci. Mean difference b/w founders `r mean_found_diff`.
+
+### Figure Cb: example STR
+
+#. Select an STR that overlap an exon and where there is a difference between C57 and DBA founders.
+#. Visualize the repeat expansion in a stylized way.
+
+```{r echo=FALSE, fig.width = 8, fig.height = 2.5, fig.align = 'center', eval = TRUE}
+    # pull down a list of STR loci overlapping with functional features
+    feat_olap_db = '../data/func_feat_isect.sqlite'
+    conn = dbConnect(RSQLite::SQLite(), feat_olap_db)
+    feat_olap = tbl(conn, sql("select * from feat_olap where loc_type='str'")) %>% collect()
+    dbDisconnect(conn)
+
+    # start with all loci where C57 and DBA differ and are homozygous
+    # find RN diff between founders
+    c57_dba_hom_diff = found_diff_loci_homhet %>%
+        # make it so that you have an "A" and "B" allele columns for each founder and each locus 
+        pivot_longer(cols = matches('_[AB]'),
+        	     names_to = 'al', 
+		     names_prefix = 'RN_',
+        	     values_to = 'gt') %>%
+        pivot_wider(id_cols = everything(),
+        	    names_from = 'al', values_from = 'gt') %>%
+        # keep only homozygous loci
+        mutate(is_hom = A == B) %>%
+        filter(is_hom) %>% 
+        rename(GT = A) %>% # because filtered for hom 
+        select(-B) %>%
+        # pivot again to make "C57" and "DBA" columns to find difference in RN between founders
+        pivot_wider(id_cols = everything(),
+        	    names_from = 'strain', values_from = 'GT') %>%
+        mutate(delta_found = DBA - C57BL)
+
+    # keep only loci that overlap exons with a certain minimum expansions
+    samp_loc = c57_dba_hom_diff %>%
+	mutate(loc_type = 'str') %>%
+	inner_join(feat_olap %>% filter(feat_type == 'exon'),
+		   by = c('loc_type', 'chr', 'pos', 'end')) %>%
+	filter(delta_found >= 3) %>%
+	# sample_n(1) %>%
+	filter(chr == 'chr7', pos == 66069050, end == 66069069) %>%
+	# add motif info
+	left_join(motif_info, by = c('chr', 'pos', 'end')) %>%
+	select(chr, pos, end, matches('C57BL|DBA'), delta_found, 
+	       motif_len, motif, feat_id, src_db)
+
+    # check
+    # samp_loc %>% select(chr, pos, end)
+    # good ones
+    # chr7  66069050 66069069
+    # chr3  135517190 135517229 (got filtered for low cr)
+    # chr13 20262775 20262818 (got filtered for low cr)
+
+    # for exons the feat_id is "tx_id"_"exon_id" --> separate this column
+    # keep first in case STR overlaps multiple exons
+    samp_loc = samp_loc %>%
+	mutate(feat_id = str_split(feat_id, pattern = ',', simplify = TRUE)[1]) %>%
+	separate('feat_id', c('tx_id', 'exon_id'))
+
+    # query transcript information
+    # note that all exons for the transcript will be pulled down
+    gene_info_db = '../data/gene_info.sqlite'
+    conn = dbConnect(RSQLite::SQLite(), gene_info_db)
+    sql_query = sprintf("select * from tx_info
+			where tx_id in ('%s')", 
+			str_c(samp_loc %>% pull(tx_id) %>% unique, collapse = "', '"))
+    tx_info = tbl(conn, sql(sql_query)) %>% collect()
+    sql_query = sprintf("select ensembl_id, name as gene_name 
+			from gene_info
+			where ensembl_id in ('%s')", 
+			str_c(tx_info %>% pull(gene_id) %>% unique, collapse = "', '"))
+    gene_info = tbl(conn, sql(sql_query)) %>% collect()
+    tx_info = tx_info %>% left_join(gene_info, by = c('gene_id' = 'ensembl_id'))
+    dbDisconnect(conn)
+
+    # check
+    # tx_info %>% select(tx_pos, exon_pos, tx_end, exon_end)
+
+    # join gene information onto 
+    # no we should have gene_id, tx_id and exon_id and associated positions to be able to plot
+
+    # create a df with row for each STR to plot each as a tile block
+    samp_loc = samp_loc %>%
+	pivot_longer(cols = c('C57BL', 'DBA'), names_to = 'founder', values_to = 'gt')
+    to_plot = samp_loc %>%
+	left_join(samp_loc %>%
+		    select(founder, gt) %>%
+		    group_by(founder) %>%
+		    group_modify(~tibble(rep = 1:.x$gt)),
+		  by = 'founder') %>%
+	mutate(st = pos + (rep - 1)*motif_len) %>%
+	mutate(en = st + motif_len - 1) %>%
+	mutate(y_pos = recode(founder, C57BL = 1, DBA = 1.5))
+
+    # make breaks and labels manually
+    brks = to_plot %>% distinct(founder, y_pos) %>% pull(y_pos)
+    lbls = to_plot %>% distinct(founder, y_pos) %>% pull(founder)
+    str_xlims = samp_loc %>% summarise(from = min(pos) - 50, to = max(end) + 50)
+
+    # generate plot
+    padd = 0.2
+    intron_h = 0.01
+    exon_h = 0.1
+    text_size = 9
+    key_size = 5
+    p1_ypadd = 1
+    p1 = bind_rows(
+	    tx_info %>% slice(1) %>% select(gene_name, ele_id = tx_id, st = tx_pos, en = tx_end) %>%
+		mutate(type = 'intron'),
+	    tx_info %>% select(gene_name, ele_id = exon_id, st = exon_pos, en = exon_end) %>%
+		mutate(type = 'exon')
+	) %>%
+	mutate(y_pos = 1) %>%
+	ggplot() +
+	geom_rect(data = function(x) x %>% filter(type == 'intron'),
+		  aes(xmin = st, xmax = en, ymin = y_pos-intron_h, ymax = y_pos+intron_h),
+		  inherit.aes = FALSE, fill = 'gray30') + 
+	geom_rect(data = function(x) x %>% filter(type == 'exon'),
+		  aes(xmin = st, xmax = en, ymin = y_pos-exon_h, ymax = y_pos+exon_h),
+		  inherit.aes = FALSE, fill = 'gray30') + 
+	geom_segment(x = str_xlims$from, xend = str_xlims$from,
+		     aes(y = y_pos-exon_h, yend = y_pos+exon_h),
+		     linetype = 'dashed', color = 'red') + 
+	geom_segment(x = str_xlims$to, xend = str_xlims$to,
+		     aes(y = y_pos-exon_h, yend = y_pos+exon_h),
+		     linetype = 'dashed', color = 'red') + 
+	scale_x_continuous(position = 'bottom',
+			   breaks = scales::breaks_pretty(n = 4),
+			   labels = scales::comma,
+			   expand = expansion(mult = c(.1, .1), add = 0)) + 
+	scale_y_continuous(
+			   breaks = 1, labels = tx_info %>% pull(gene_name) %>% unique ,
+			   expand = expansion(mult = 0, add = 0)) + 
+	coord_cartesian(ylim = c(1 - exon_h - p1_ypadd*exon_h, 1 + exon_h + p1_ypadd*exon_h)) + 
+	scale_fill_manual(values = c(exon = 'blue', intron = 'gray70')) +
+	guides(fill = guide_legend(title = NULL)) + 
+	theme_half_open() +
+	theme(axis.text = element_text(size = text_size),
+	      legend.text = element_text(size = text_size),
+	      legend.key.width = unit(key_size, 'pt'),
+	      legend.key.height = unit(key_size, 'pt'),
+	      axis.title.y = element_blank(),
+	      axis.line.y = element_blank(),
+	      axis.text.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 100, unit = 'pt')),
+	      axis.ticks.y = element_blank(),
+	      axis.title.x = element_blank(),
+	      legend.direction = 'horizontal',
+	      plot.title = element_text(hjust = 0.5, size = 10),
+	      plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = 'pt'))
+	# ggtitle(tx_info %>% pull(tx_chr) %>% unique %>% sub('chr', 'Chr', .))
+    p2 = to_plot %>%
+	ggplot() +
+	geom_hline(aes(yintercept = y_pos)) + 
+	geom_tile(aes(x = (st + en)/(2), width = (en - st + 1 - padd), y = y_pos),
+		  height = 0.3, fill = 'gray30') +
+	geom_bracket(data = to_plot %>% filter(founder == 'DBA' & rep == 1),
+		     aes(xmin = st, xmax = en, label = motif, 
+			 y.position = y_pos + 0.2),
+		     inherit.aes = FALSE,
+		     label.size = 3,
+		     coord.flip = FALSE) +
+	coord_cartesian(xlim = c(str_xlims$from, str_xlims$to)) +  
+	scale_y_continuous(
+			   breaks = brks, labels = lbls,
+			   expand = expansion(mult = 0, add = c(0, 0.2))) + 
+	theme_half_open() +
+	theme(axis.text = element_text(size = text_size),
+	      legend.text = element_text(size = text_size),
+	      axis.title.y = element_blank(),
+	      axis.line.y = element_blank(),
+	      axis.title.x = element_blank(),
+	      axis.text.x = element_blank(),
+	      axis.line.x = element_blank(),
+	      axis.ticks.x = element_blank(),
+	      plot.margin = margin(t = 5, r = 80, b = 0, l = 100, unit = 'pt'))
+    ext_legend = get_legend(p1)
+    p = plot_grid(p2,
+		  p1 + theme(legend.position = 'none'), 
+		  rel_heights = c(0.85, 1),
+		  ncol = 1)
+    # p = p + draw_grob(ext_legend, 0.15, 0.9, 0, 0)
+    p
+    fig_Cb = p
+    ggsave('../pdfs/figure_2Cb.pdf', plot = fig_Cb, w = 8, h = 2.5)
+
+```
+
+
+#### *Denovo* variants per strain
+
+```{r reorder strains, echo=FALSE, fig.width = 10, fig.height = 4, fig.align = 'center', eval = TRUE}
+    # order by generations of breeding
+    newvar_perc_per_strain = newvar_perc_per_strain %>%
+	mutate(strain = fct_reorder(strain, gen_inbreeding))
+```
+
+#. Plot percentage of new variants per strain by epoch.
+#. Order strains within each epoch by the number of inbreeding generations.
+    - Plot as a secondary panel for diagnotic purposes (won't include it in final plot).
+#. Proportion of hom new variants falls from epoch_1a to epoch_4, constant across epochs 4, 5 and 6 and drops again in epoch 7.
+    * We would expect that het variants in early epochs are private variants (not representative of strains) or genotyping errors.
+    * Maybe we can assume that for completely inbred strains:
+	- 50% of observed *denovo* variants are real hom *denovos*.
+	- 50% are private het *denovos*.
+    * For incompletely inbred strains, you would have some % of observed new variants that are strain het *denovos* in excess of that baseline.
+    * Unfortunately, we can't differentiate the strain het *denovos* from private het *denovos*.
+    * We also don't know what the proportion of hom *denovos* are strain vs. private.
+#. Label BXD68 - the mutator phenotype strain is boxed with a `darkorchi4` border.
+    - Not one of the strains from its epoch with the highest percentage of new variant loci.
+
+```{r newvars per strain diagnostic, echo=FALSE, fig.width = 10, fig.height = 6, fig.align = 'center', eval = TRUE}
+    # assemble the plot of number of breeding generations
+    p1 = newvar_perc_per_strain %>%
+	filter(lab == 'N') %>%
+	ggplot(aes(strain, gen_inbreeding)) + 
+	geom_bar(stat = 'identity', position = 'stack') +
+	facet_grid(~off_epoch_id, scales = 'free_x', space = 'free_x') +
+	scale_y_continuous(expand = expansion(0, 0)) +
+	theme_half_open() + 
+	theme(axis.text.x = element_blank(),
+	      axis.ticks.x = element_blank(),
+	      axis.title.x = element_blank(),
+	      strip.background = element_rect(fill = NA),   
+	      plot.title = element_text(hjust = 0.5, size = 10),
+	      legend.position = 'none')
+
+    # assemble plot of percent new variants
+    p2 = newvar_perc_per_strain %>%
+	filter(lab %in% c('HN', 'N')) %>%
+	mutate(lab = recode(lab, N = 'hom', HN = 'het')) %>%
+	ggplot(aes(strain, perc)) + 
+	geom_bar(stat = 'identity', position = 'stack', aes(fill = lab)) +
+	facet_grid(~off_epoch_id, scales = 'free_x', space = 'free_x') +
+	scale_fill_manual(values = c(het = '#1f78b4', hom = '#b2df8a')) + 
+	scale_y_continuous(expand = expansion(0, 0)) +
+	theme_half_open() + 
+	theme(axis.text.x = element_blank(),
+	      axis.ticks.x = element_blank(),
+	      axis.title.x = element_blank(),
+	      # strip.text = element_blank(),
+	      strip.background = element_rect(fill = NA),   
+	      plot.title = element_text(hjust = 0.5, size = 10),
+	      legend.position = 'none') +
+	labs(x = 'Strain', y = '% total loci')
+    
+    # stack fill HN and N to show the change in percentage
+    p3 = newvar_perc_per_strain %>%
+	filter(lab %in% c('HN', 'N')) %>%
+	mutate(lab = recode(lab, N = 'hom', HN = 'het')) %>%
+	ggplot(aes(strain, perc)) + 
+	geom_bar(stat = 'identity', position = 'fill', aes(fill = lab)) +
+	facet_grid(~off_epoch_id, scales = 'free_x', space = 'free_x') +
+	scale_fill_manual(values = c(het = '#1f78b4', hom = '#b2df8a')) + 
+	scale_y_continuous(expand = expansion(0, 0)) +
+	theme_half_open() + 
+	theme(axis.text.x = element_blank(),
+	      axis.ticks.x = element_blank(),
+	      # strip.text = element_blank(),
+	      strip.background = element_rect(fill = NA),   
+	      plot.title = element_text(hjust = 0.5, size = 10),
+	      legend.position = 'right') +
+	labs(x = 'Strain', y = '% denovo loci')
+    p3 = p3 + geom_bar(data = function(x) x %>% filter(strain == 'BXD068'),
+		       stat = 'identity', position = 'fill', aes(fill = lab), color = 'darkorchid4')
+    p = plot_grid(p1, 
+		  p2 + theme(strip.text = element_blank()), 
+		  p3 + theme(strip.text = element_blank()), 
+		  ncol = 1, axis = 'lr', align = 'v', rel_heights = c(0.7, 1, 1))
+    p
+
+    # save supplementary figure
+    # suppl_fig_D = plot_grid(p2, p3, ncol = 1, axis = 'lr', align = 'v')
+    suppl_fig_D = p3 + 
+	theme(legend.position = c(0, 1.25),
+	      legend.justification = c(0, 1),
+	      legend.direction = 'horizontal',
+	      panel.spacing = unit(5, 'pt'),
+	      plot.margin = margin(t = 1, b = 1, l = 0.5, r = 0.5, unit = 'cm')) + 
+	guides(fill = guide_legend(title = NULL))
+    ggsave('../pdfs/suppl_figure_2D.pdf', plot = suppl_fig_D, w = 10, h = 6)
+```
+
+
+#### Figure 4C *Denovo* variants per strain (re-finalized)
+
+#. Making a simple scatter plot to correlate % denovo loci with number of inbreeding generations instead of two panels of barplots
+
+```{r newvariants per strain final, echo=FALSE, fig.width = 10, fig.height = 6, fig.align = 'center', eval = TRUE}
+    # assembly correlation plot
+    p = newvar_perc_per_strain %>%
+	filter(lab %in% c('N')) %>%
+	    # identify "middle" strain for each epoch
+	    # calculate avg number of generations per epoch
+	ggplot(aes(gen_inbreeding, perc, color = off_epoch_id)) + 
+	geom_point() +
+	scale_color_manual(values = epoch_colors, guide = guide_legend(title = 'epoch')) +
+	theme_half_open() + 
+	theme(
+	      # axis.text.x = element_blank(),
+	      # axis.ticks.x = element_blank(),
+	      # strip.text = element_blank(),
+	      # panel.spacing = ps,
+	      # strip.background = element_rect(fill = NA),   
+	      plot.title = element_text(hjust = 0.5, size = 10)) +
+	labs(y = '% Loci', x = 'Inbreeding generations')
+    p
+    # TODO: get the percentage of new variant loci by motif length and make into a 3rd panel
+
+    fig_4C = p
+    ggsave('../pdfs/figure_4C.pdf', plot = fig_4C, w = 5, h = 4)
+
+
+```
+
+
+
+### Suppl. Figure 2A: call quality vs. motif length
+
+#. Source script: `workflows/*_lowcr_loci`.
+#. Take merged STR `.vcf` file (GanSTR -> DumpSTR -> bcftools).
+#. Query `Q` field from the `.vcf` file for all loci.
+#. For each locus, calculate the mean call quality across all strains.
+
+Check the number of loci that are sampled:
+
+```{r, echo = FALSE, eval = TRUE}
+    knitr::kable(q_bxp %>% ungroup %>% summarise(n_loci = sum(n)))
+```
+
+```{r echo=FALSE, fig.width = 6, fig.height = 4, fig.align = 'center', eval = TRUE}
+    # distribution of Q
+    p1 = q_bxp %>%
+	ungroup %>%
+	mutate(perc_calls = n*100/sum(n)) %>%
+	ggplot(aes(motif_len, perc_calls)) + 
+	geom_point() +
+	geom_line(aes(group = 1)) +
+	theme_half_open() +
+	theme(axis.title.x = element_blank(),
+	      axis.text.x = element_blank(),
+	      # axis.line.x = element_blank(),
+	      axis.ticks.x = element_blank()) +
+	scale_y_continuous(breaks = scales::breaks_extended(n = 3)) +
+	labs(y = '% Calls')
+    p2 = q_bxp %>%
+	ggplot() +
+	geom_boxplot(aes(x = motif_len,
+			 ymin = wisk_lower, 
+			 lower = lower, 
+			 middle = middle, 
+			 upper = upper, 
+			 ymax = wisk_upper
+			 ), stat = 'identity') +
+	theme_half_open() +
+	theme(plot.title = element_text(hjust = 0.5, size = 10)) + 
+	labs(x = 'Motif length', y = 'Average call quality')
+    p = plot_grid(p1, p2, ncol = 1, axis = 'lr', align = 'v', rel_heights = c(0.4, 1))
+    suppl_fig_A = p
+    suppl_fig_A
+    ggsave('../pdfs/suppl_figure_2A.pdf', plot = suppl_fig_A, w = 6, h = 4)
+```
+
+### Suppl. Figure 2B: number of alleles per STR
+
+```{r n_unq_gt make plots, echo=FALSE, fig.width = 6, fig.height = 4, fig.align = 'center', eval = TRUE}
+    # make list to loop over
+    loc_list = alleles_per_str %>% pull(loc_list) %>% unique; names(loc_list) = loc_list
+    loc_list_names = list(`genotyped strs` = 'all', `filtered strs post impute` = 'post_imp')
+
+    # check
+    # alleles_per_str %>% skim
+
+    # loop over each loc list
+    plist = map(loc_list, function(ll) {
+	# user out
+	# print(sprintf('Processing %s', ll))
+
+	# generate plots
+	p_base = alleles_per_str %>% 
+	    ggplot(aes(x = n_unq_gt, y = n_loci, fill = var)) +
+	    geom_bar(stat = 'identity') +
+	    scale_fill_brewer(palette = 'Set1') +
+	    scale_y_continuous(labels = scales::comma) +
+	    scale_x_continuous(breaks = function(x) seq(0, x[2], 2)) +
+	    coord_cartesian(xlim = c(0, 20)) +
+	    facet_wrap(~var, nrow = 2) +
+	    theme_half_open() +
+	    labs(x = 'n_unq_gt') +
+	    theme(legend.position = 'top',
+		  plot.title = element_text(hjust = 0.5, size = 10),
+		  plot.margin = margin(20, 5, 5, 5, unit = 'pt'))
+	p_str = (p_base %+% (alleles_per_str %>% 
+			     filter(loc_list == ll) %>%
+			     mutate(var = recode(var, 
+						 w_het = 'include het strains', 
+						 wo_het = 'exclude het strains')))
+		) + theme(legend.position = 'none')
+
+	# assemble plots together
+	# plot_grid(p_str, p_snp, nrow = 1, align = 'h', axis = 'tb')
+	p_str
+    })
+```
+
+* `n_unq_gt = 0`: are completely no-call loci which are removed after filtering.
+* Monoallelic loci and loci that appear multi-allelic due to hets are removed during locus filtering.
+* Most STR loci are bialleleic if het strains are excluded.
+    - Some but likely not all of these het strains are spurious.
+
+```{r n_unq_gt, echo=FALSE, fig.width = 8, fig.height = 5, fig.align = 'center', eval = TRUE}
+    p = plot_grid(plist$all, plist$post_imp, nrow = 1, 
+	      labels = c('All loci', 'Filtered loci post-impute'),
+	      label_size = 10, vjust = 1.5)
+    p
+```
+
+* Zoom in "Filtered loci post-impute".
+
+```{r n_unq_gt zoom, echo=FALSE, fig.width = 8, fig.height = 3, fig.align = 'center', eval = TRUE}
+    p_base = alleles_per_str %>% 
+	ggplot(aes(x = n_unq_gt, y = n_loci)) +
+	geom_bar(stat = 'identity') +
+	scale_fill_brewer(palette = 'Set1') +
+	scale_y_continuous(labels = scales::comma) +
+	scale_x_continuous(breaks = function(x) seq(0, x[2], 2)) +
+	facet_wrap(~var, nrow = 1, scales = 'free_y') +
+	theme_half_open() +
+	labs(x = 'n_unq_gt') +
+	theme(legend.position = 'none',
+	      plot.title = element_text(hjust = 0.5, size = 10),
+	      plot.margin = margin(20, 5, 5, 5, unit = 'pt'))
+    p1 = p_base %+% (alleles_per_str %>%
+			filter(loc_list == 'post_imp', var == 'wo_het') %>%
+			mutate(var = 'exclude het strains')) +
+	 coord_cartesian(xlim = c(0, 20), ylim = c(0, 5e3))
+    p2 = p_base %+% (alleles_per_str %>%
+			filter(loc_list == 'post_imp', var == 'w_het') %>%
+			mutate(var = 'include het strains')) +
+	 coord_cartesian(xlim = c(0, 20), ylim = c(0, 5e3))
+    p = plot_grid(p1, p2, nrow = 1)
+    p
+```
+
+```{r n_unq_gt make final suppl plot, echo=FALSE, fig.width = 6, fig.height = 4, fig.align = 'center', eval = TRUE}
+    p = alleles_per_str %>%
+	filter(loc_list == 'post_imp',
+	       var == 'wo_het') %>%
+	ggplot(aes(x = n_unq_gt, y = n_loci)) +
+	geom_bar(stat = 'identity') +
+	scale_y_continuous(labels = scales::comma) +
+	scale_x_continuous(breaks = function(x) seq(0, x[2], 1)) +
+	coord_cartesian(xlim = c(1, NA)) +
+	theme_half_open() +
+	labs(x = 'Number of unique genotypes', y = 'Locus count')
+
+    # print plot
+    suppl_fig_B = p
+    suppl_fig_B
+    ggsave('../pdfs/suppl_figure_2B.pdf', plot = suppl_fig_B, w = 8, h = 5)
+```
+
+### Suppl. Figure 2C: per-strain heterozygocity
+
+```{r homhet per strain fig, echo=FALSE, fig.width = 8, fig.height = 6, fig.align = 'center', eval = TRUE}
+    # order strains by BXD id
+    strain_levels = per_strain_homhet %>% pull(strain) %>% unique %>% str_sort(., numeric = TRUE)
+    
+    # set levels and pivot longer
+    per_strain_homhet = per_strain_homhet %>% 
+	mutate(strain = fct_relevel(strain, strain_levels)) %>%
+	pivot_longer(cols = c('het', 'hom', 'nocall'), 
+		     names_to = 'type',
+		     values_to = 'n_loci')
+    
+    # filter out "nocall" counts to visualize het/hom proportions ignoring no-calls
+    per_strain_homhet_nona = per_strain_homhet %>% filter(type != 'nocall')
+
+    # make founders and RIL separate groups
+    per_strain_homhet_nona = per_strain_homhet_nona %>%
+	mutate(grp = if_else(strain %in% c('C57BL', 'DBA'), 'founder', 'ril')) %>%
+	# filter(grp == 'founder')
+	mutate(grp = fct_relevel(grp, c('ril', 'founder')))
+
+    # plot for STRs; strains ordered in increasing call rate
+    p_base = per_strain_homhet_nona %>%
+	ggplot(aes(strain, n_loci, fill = type)) +
+	geom_bar(stat = 'identity', position = 'fill') +
+	# facet_grid(~grp, scales = 'free_x', space = 'fixed') + 
+	theme_half_open() +
+	theme(legend.position = 'right',
+	      axis.title.y = element_blank(),
+	      plot.title = element_text(hjust = 0.5, size = 10),
+	      panel.spacing = unit(5, 'pt'),
+	      panel.border = element_rect(color = 'black'),
+	      strip.text = element_blank(),
+	      plot.margin = margin(t = 0, r = 5, b = 5, l = 5, unit = 'pt')) +
+	labs(y = '% of Loci', x = 'Strain') +
+	scale_fill_manual(values = c(het = '#1f78b4', hom = '#b2df8a'))
+    p_str_ril = ( p_base %+% (per_strain_homhet_nona %>% filter(loc_type == 'str', grp == 'ril')) ) +
+		    annotate(geom = 'text', label = 'STRs', x = 0, y = 0, hjust = -0.1, vjust = -0.5, size = 4.5) + 
+		    theme(axis.text.x = element_blank(), 
+			  axis.ticks.x = element_blank(),
+			  axis.title.x = element_blank(),
+			  plot.margin = margin(t = 0, r = 5, b = 5, l = 22, unit = 'pt'),
+			  legend.position = 'none')
+    p_str_fou = ( p_base %+% (per_strain_homhet_nona %>% filter(loc_type == 'str', grp == 'founder')) ) +
+		    theme(axis.title = element_blank(),
+			  axis.text.x = element_blank(),
+			  axis.ticks.x = element_blank(),
+			  axis.text.y = element_blank(),
+			  legend.position = 'none')
+    p_str = plot_grid(p_str_ril, p_str_fou, 
+		      nrow = 1, align = 'h', axis = 'tb', 
+		      rel_widths = c(1, 0.1))
+    p_snp_ril = ( p_base %+% (per_strain_homhet_nona %>% filter(loc_type == 'snp', grp == 'ril')) ) +
+		    annotate(geom = 'text', label = 'SNPs', x = 0, y = 0, hjust = -0.1, vjust = -0.5, size = 4.5) + 
+		    guides(fill = guide_legend(title = NULL)) + 
+		    theme(axis.text.x = element_blank(), 
+			  axis.ticks.x = element_blank(),
+			  plot.margin = margin(t = 0, r = 5, b = 5, l = 22, unit = 'pt'),
+			  legend.position = 'bottom')
+    p_snp_fou = ( p_base %+% (per_strain_homhet_nona %>% filter(loc_type == 'snp', grp == 'founder')) ) +
+		    theme(axis.title = element_blank(),
+			  axis.ticks.x = element_blank(),
+			  axis.text.x = element_text(angle = 90, hjust = 1),
+			  axis.text.y = element_blank(),
+			  legend.position = 'none')
+    ext_legend = get_legend(p_snp_ril)
+    p_snp = plot_grid(p_snp_ril + theme(legend.position = 'none'), p_snp_fou, 
+		      nrow = 1, align = 'h', axis = 'tb', 
+		      rel_widths = c(1, 0.1))
+    p = plot_grid(p_str, p_snp , nrow = 2, rel_heights = c(0.8, 1)) + theme(plot.margin = margin(t = 1, b = 0, l = 0, r = 0, 'cm'))
+    p = p + draw_grob(ext_legend, 0.12, 1.05, 0, 0)
+    p = p + draw_label(label = '% Loci', x = 0.025, y = 0.5, angle = 90) # unitified y-axis title
+    p
+    suppl_fig_C = p
+    ggsave('../pdfs/suppl_figure_2C.pdf', plot = suppl_fig_C, w = 8, h = 4)
+
+```
+
+Homozygocity by epoch.
+
+```{r homhet per strain table, echo=FALSE, fig.width = 8, fig.height = 6, fig.align = 'center', eval = TRUE}
+    per_epoch_homozygocity = per_strain_homhet_nona %>%
+	left_join(epoch_detail %>% select(bxd_id, epoch = off_epoch), by = c('strain' = 'bxd_id')) %>%
+	group_by(strain, loc_type) %>%
+	mutate(perc_loci = n_loci*100/sum(n_loci)) %>%
+	group_by(epoch, loc_type, type) %>%
+	summarise(
+	    avg_perc_loci = mean(perc_loci),
+	    sd = sd(perc_loci))
+    knitr::kable(per_epoch_homozygocity %>% filter(loc_type == 'str', type == 'hom'))
+```
+
+
+### Suppl. Figure 2E: homozygous patchwork
+
+#. Visualize inheritance patterns for BXD RI strains (two chromosomes as an example).
+#. Generated  `.geno` files using imputed genotypes for filtered locus sets (wo_zv, wo_hetonly, wo_segdup, wo_lowcr) with the encodings below.
+#. Reduced "double code" to "single code" labels for calculating inheritance blocks.
+#. Inheritance blocks are determined using connected component clustering from `igraph` library.
+#. Chose connection depth of 10 for smoothing.
+#. Only major blocks are shown.
+#. Minor blocks that are totally enclosed within major blocks are not shown
+#. Only B/D/H blocks are shown.
+
+Encodings:
+
+| double code | hom/het | description                                                                | single code |
+| --------    | ------- | -------------------------------------------------------------------------- | ----------- |
+| BB          | hom     | both alleles from B                                                        | B           |
+| DD          | hom     | both alleles from D                                                        | D           |
+| NN          | hom     | both alleles not seen in founder and new alleles are the same              | N           |
+| FF          | hom     | both alleles from founders, but not known if B or D; could be BB or DD     | discard     |
+| dd          | het     | both alleles from D;founder strain must have been D                        | D           |
+| bb          | het     | both alleles from B;founder strain must have been B                        | B           |
+| ff          | het     | both alleles from founders, but not known if B or D; could be BB, DD or BD | discard     |
+| bd          | het     | one B and one D allele (this can only be het)                              | H           |
+| nn          | het     | both alleles not seen in founder, but new alleles are different            | N           |
+| bn          | het     | one B allele and one new allele                                            | N           |
+| dn          | het     | one D allele and one new allele                                            | N           |
+| fn          | het     | one B or D allele and one new variant allele                               | N           |
+| bf          | het     | one B allele and one B or D allele; could be BB or BD                      | discard     |
+| df          | het     | one D allele and one B or D allele; could be DD or BD                      | discard     |
+| no-call     | NA      | strain doesn't have a call                                                 | no-call     |
+
+```{r make sdp plots, echo=FALSE, fig.width = 16, fig.height = 4, fig.align = 'center', eval = TRUE}
+    chrom    = 'chr1'
+    # loc_type = 'str'
+    p_list = map(loc_types, function(loc_type) {
+	# user out
+	# print(sprintf('Processing %ss', loc_type))
+
+	# by strain stack chromosomes
+	p = inherit_blocks %>%
+	    # filter(n_loci > 10) %>%
+	    # filter(lab %in% c('B', 'D', 'H')) %>%
+	    filter(loc_type == !!loc_type) %>%
+	    filter(chr == chrom) %>%
+	    mutate(Mb = (pos+end)/(2*1e6),
+		   h = (pos - end + 1)/1e6) %>%
+	    mutate(chr = fct_relevel(chr, str_sort(unique(chr), numeric = TRUE, decreasing = TRUE))) %>%
+	    mutate(strain = fct_relevel(strain, strain_lvls)) %>%
+	    ggplot(aes(x = strain)) + 
+	    scale_fill_manual(values = col_vals) +
+	    scale_y_continuous(expand = expansion(0, 0)) +
+	    theme_half_open() + 
+	    theme(axis.text.x = element_blank(),
+		  # axis.text.x = element_text(angle = 90, size = 8),
+		  axis.ticks.x = element_blank(),
+		  panel.spacing = unit(0, "lines"),
+		  # strip.text = element_blank(),
+		  strip.background = element_rect(fill = NA),
+		  plot.title = element_text(hjust = 0.5, size = 14),
+		  legend.position = 'none')
+	    # ggtitle(loc_type)
+	# ggsave('test.png', plot = p, w = 16, h = 14)
+
+	# output
+	return(p)
+    })
+    
+    # get name of first strain
+    first_strain = inherit_blocks %>% pull(strain) %>% .[1]
+    
+    # p_list_vec = p_list
+    # for (i in 1:length(p_list_vec)) {
+    #     p_list_vec[[i]] = p_list_vec[[i]] + 
+    # 	geom_tile(aes(y = Mb, height = h, fill = lab), color = NA)
+    # }
+    # p_vec = plot_grid(plotlist = p_list_vec, nrow = 1)
+    # ggsave(sprintf('%s/%s', plot_dir, 'suppl_figure_Ea.pdf'), plot = p_vec, w = 16, h = 4)
+    
+    p_list_rast = p_list
+    for (loc_type in names(p_list_rast)) {
+	p_list_rast[[loc_type]] = p_list_rast[[loc_type]] + 
+	    geom_tile_rast(aes(y = Mb, height = h, fill = lab), raster.dpi = 150, color = NA) +
+	    annotate(geom = 'text', label = sprintf('%ss', toupper(loc_type)), 
+		     x = first_strain, y = 0, hjust = -0.1, vjust = -1, size = 4.5)
+	if (loc_type == 'snp') {
+	    p_list_rast[[loc_type]] = p_list_rast[[loc_type]] +
+		theme(axis.title.y = element_blank(),
+		       axis.text.y = element_blank(),
+		      axis.ticks.y = element_blank()
+		     )
+	} 
+    }
+    p_rast = plot_grid(plotlist = p_list_rast, nrow = 1, rel_widths = c(1, 0.9))
+   p_list
+   p_list_rast
+    # ggsave(sprintf('%s/%s', plot_dir, 'suppl_figure_Ea_rast.pdf'), plot = p_rast, w = 16, h = 4)
+    
+    suppl_fig_E = p_rast
+    ggsave('../pdfs/suppl_figure_2E.pdf', plot = suppl_fig_E, w = 16, h = 4)
+```
+
