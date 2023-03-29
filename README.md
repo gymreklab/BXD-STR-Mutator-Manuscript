@@ -96,6 +96,8 @@ Figures:
 Computes statistics:
 * Number of STRs/SNPs/SVs in QTL interval overlapping protein coding genes
 
+Large files required for `3_vep_annot_per_gene.Rmd` can be downloaded here: https://drive.google.com/drive/folders/1cVm7IZPHZ3gl4O4yi_GQ_Jz5pz3gChpi?usp=sharing
+
 ## Part 4: Expansion propensity QTL co-localizes with multiple cis-eQTLs
 
 ### 9. `analysis/4_eqtl_mapping.Rmd`
