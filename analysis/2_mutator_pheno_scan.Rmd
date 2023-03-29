@@ -606,6 +606,192 @@ p = perc_exp_byhap %>%
 p
 ggsave(fs::path('../pdfs/', 'Fig2b.pdf'), p, w = 6, h = 8)
 ```
+# Load data 
+
+#. Attach motif info to new variant str information
+#. Bundle epoch1b and epoch1c together with epoch1a
+
+```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# join motif length to new variant STRs (note: these are homozygous)
+  denovo_strs = readr::read_csv('../outs/denovo_strs_filtered_intergenic.csv')
+	denovo_strs = denovo_strs %>%
+	left_join(motif_info %>% select(chr, pos, end, motif_len), by = c('chr', 'pos', 'end'))
+	strain_info = strain_info %>%
+	  mutate(off_epoch = recode(off_epoch, epoch_1a = 'epoch_1', epoch_1b = 'epoch_1', epoch_1c = 'epoch_1')) 
+	
+	num_mut = nrow(denovo_strs %>% distinct(chr, pos, end))
+  print(paste("Num mutations:", num_mut))
+  print(paste("Mutation length:", FINALML))
+```
+
+# Calculate all phenotypes for different filtering params
+```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+  # calculate %expanded for different motif lengths and filtering parameters
+	mls = c('all', 2, 3, 4, 5, 6) %>% set_names(.) # motif len
+	mpps = c(0, 5, 10, 20, 50) %>% set_names(.) # min number of total mutations per strain to include
+	mdsls = c(1000, 50, 10, 3, 1) %>% set_names(.) # max_denovo_strains_per_loc
+	
+	all_phenos = 
+	  map_df(phenos, function(pheno) {
+	    map_df(mls, function(ml) {
+			  map_df(mpps, function(min_pts_per_phe) {
+				  map_df(mdsls, function(max_denovo_strains_per_loc) {
+					  calc_pheno_vals(denovo_strs, pheno, 
+									min_pts_per_phe = min_pts_per_phe, 
+									max_denovo_strains_per_loc = max_denovo_strains_per_loc, 
+									ml = ml,
+									gtloc_per_strain = gtloc_per_strain %>% dplyr::rename(n_gt = n_loci)) %>%
+						mutate(motif_len = as.character(ml))
+				}, .id = 'max_denovo_strains_per_loc')
+			}, .id = 'min_pts_per_phe')
+		}, .id='motif_len')
+	}, .id='metric')
+	
+	pheno_vals = all_phenos %>% 
+	  filter(min_pts_per_phe == 10, max_denovo_strains_per_loc == 10, motif_len == '4') %>%
+	  select(strain, motif_len, pheno, n, metric)
+	#write.csv(pheno_vals, '../outs/pheno_vals_tetra.csv')
+```
+
+# Plot founder gt at locus vs. expansion propensity (SuppFigure intergenic)
+```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+# founder genotypes at max LOD marker for %expanded 
+fou_gt_at_peak = maxmarg(qtl_data$snp_probs[,'13'], minprob = 0.5) %>% 
+		.[[1]] %>%
+		as.data.frame %>%
+		rownames_to_column(var = 'strain') %>%
+		pivot_longer(cols = !strain, names_to = 'marker', values_to = 'fou_gt') %>%
+		semi_join(final_qtl_res %>% 
+				filter(metric == '% expanded') %>%
+				unite('marker', c('chr', 'pos', 'end')) %>%
+				slice_max(LOD, n = 1), by = 'marker') %>%
+		mutate(fou_gt = recode(fou_gt, `1` = 'B', `2` = 'D'),
+			   fou_gt = replace_na(fou_gt, 'miss'))
+# Get perc expanded and hap labels for each strain
+perc_exp_byhap = all_phenos %>% 
+  filter(min_pts_per_phe == 10, max_denovo_strains_per_loc == 10, motif_len == FINALML) %>%
+		    filter(metric == '% expanded') %>%
+		    filter(strain %in% strains) %>%
+		left_join(strain_info %>% 
+				  mutate(off_epoch = recode(off_epoch, epoch_1b = 'epoch_1a', epoch_1c = 'epoch_1a')) %>%
+				  select(strain = bxd_id, off_epoch), by = 'strain') %>%
+		dplyr::rename(perc_expand = pheno) %>%
+		left_join(fou_gt_at_peak %>% select(!marker), by = 'strain') %>%
+		arrange(desc(perc_expand)) %>%
+		select(strain, perc_expand, off_epoch, fou_gt, n)
+founder_colors = c(
+		'B' = 'red', 
+		'D' = 'blue'
+		)
+p = perc_exp_byhap %>%
+  ggplot(aes(fou_gt, perc_expand, color = fou_gt)) +
+  geom_quasirandom(dodge.width = 0.1, width=0.2, shape=21, groupOnX = TRUE) +
+  geom_boxplot(aes(group = fou_gt), 
+					 fill = 'white', alpha=0, 
+					 width = 0.2, outlier.shape = NA,
+					 position = position_dodge(width = 0.3)) +
+  scale_color_manual(
+			values = founder_colors,
+			guide = guide_legend(title = NULL, nrow = 1)
+		) + 
+  theme_half_open() +
+  ylab("Expansion propensity")
+p
+ggsave(fs::path('../pdfs/', 'SuppFig_intergenic.pdf'), p, w = 6, h = 8)
+```
+# Load data 
+
+#. Attach motif info to new variant str information
+#. Bundle epoch1b and epoch1c together with epoch1a
+
+```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	# join motif length to new variant STRs (note: these are homozygous)
+  denovo_strs = readr::read_csv('../outs/denovo_strs_filtered_genic.csv')
+	denovo_strs = denovo_strs %>%
+	left_join(motif_info %>% select(chr, pos, end, motif_len), by = c('chr', 'pos', 'end'))
+	strain_info = strain_info %>%
+	  mutate(off_epoch = recode(off_epoch, epoch_1a = 'epoch_1', epoch_1b = 'epoch_1', epoch_1c = 'epoch_1')) 
+	
+	num_mut = nrow(denovo_strs %>% distinct(chr, pos, end))
+  print(paste("Num mutations:", num_mut))
+  print(paste("Mutation length:", FINALML))
+```
+
+# Calculate all phenotypes for different filtering params
+```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+  # calculate %expanded for different motif lengths and filtering parameters
+	mls = c('all', 2, 3, 4, 5, 6) %>% set_names(.) # motif len
+	mpps = c(0, 5, 10, 20, 50) %>% set_names(.) # min number of total mutations per strain to include
+	mdsls = c(1000, 50, 10, 3, 1) %>% set_names(.) # max_denovo_strains_per_loc
+	
+	all_phenos = 
+	  map_df(phenos, function(pheno) {
+	    map_df(mls, function(ml) {
+			  map_df(mpps, function(min_pts_per_phe) {
+				  map_df(mdsls, function(max_denovo_strains_per_loc) {
+					  calc_pheno_vals(denovo_strs, pheno, 
+									min_pts_per_phe = min_pts_per_phe, 
+									max_denovo_strains_per_loc = max_denovo_strains_per_loc, 
+									ml = ml,
+									gtloc_per_strain = gtloc_per_strain %>% dplyr::rename(n_gt = n_loci)) %>%
+						mutate(motif_len = as.character(ml))
+				}, .id = 'max_denovo_strains_per_loc')
+			}, .id = 'min_pts_per_phe')
+		}, .id='motif_len')
+	}, .id='metric')
+	
+	pheno_vals = all_phenos %>% 
+	  filter(min_pts_per_phe == 10, max_denovo_strains_per_loc == 10, motif_len == '4') %>%
+	  select(strain, motif_len, pheno, n, metric)
+	#write.csv(pheno_vals, '../outs/pheno_vals_tetra.csv')
+```
+
+# Plot founder gt at locus vs. expansion propensity (SuppFigure genic)
+```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+# founder genotypes at max LOD marker for %expanded 
+fou_gt_at_peak = maxmarg(qtl_data$snp_probs[,'13'], minprob = 0.5) %>% 
+		.[[1]] %>%
+		as.data.frame %>%
+		rownames_to_column(var = 'strain') %>%
+		pivot_longer(cols = !strain, names_to = 'marker', values_to = 'fou_gt') %>%
+		semi_join(final_qtl_res %>% 
+				filter(metric == '% expanded') %>%
+				unite('marker', c('chr', 'pos', 'end')) %>%
+				slice_max(LOD, n = 1), by = 'marker') %>%
+		mutate(fou_gt = recode(fou_gt, `1` = 'B', `2` = 'D'),
+			   fou_gt = replace_na(fou_gt, 'miss'))
+# Get perc expanded and hap labels for each strain
+perc_exp_byhap = all_phenos %>% 
+  filter(min_pts_per_phe == 10, max_denovo_strains_per_loc == 10, motif_len == FINALML) %>%
+		    filter(metric == '% expanded') %>%
+		    filter(strain %in% strains) %>%
+		left_join(strain_info %>% 
+				  mutate(off_epoch = recode(off_epoch, epoch_1b = 'epoch_1a', epoch_1c = 'epoch_1a')) %>%
+				  select(strain = bxd_id, off_epoch), by = 'strain') %>%
+		dplyr::rename(perc_expand = pheno) %>%
+		left_join(fou_gt_at_peak %>% select(!marker), by = 'strain') %>%
+		arrange(desc(perc_expand)) %>%
+		select(strain, perc_expand, off_epoch, fou_gt, n)
+founder_colors = c(
+		'B' = 'red', 
+		'D' = 'blue'
+		)
+p = perc_exp_byhap %>%
+  ggplot(aes(fou_gt, perc_expand, color = fou_gt)) +
+  geom_quasirandom(dodge.width = 0.1, width=0.2, shape=21, groupOnX = TRUE) +
+  geom_boxplot(aes(group = fou_gt), 
+					 fill = 'white', alpha=0, 
+					 width = 0.2, outlier.shape = NA,
+					 position = position_dodge(width = 0.3)) +
+  scale_color_manual(
+			values = founder_colors,
+			guide = guide_legend(title = NULL, nrow = 1)
+		) + 
+  theme_half_open() +
+  ylab("Expansion propensity")
+p
+ggsave(fs::path('../pdfs/', 'SuppFig_genic.pdf'), p, w = 6, h = 8)
+```
 
 # Plot founder gt at locus vs. expansion propensity by epoch (Figure 2c)
 ```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
