@@ -42,16 +42,16 @@ Computes statistics:
 Figures:
 * 2b: Expansion propensity vs. B/D
 * 2c: Expansion propensity vs. B/D by epoch
-* Supp Figure 5: QTL scan by multiple features
-* Supp Figure 6: Distribution of exp propensity by period
-* Supp Figure 7: QTL scan by epoch
+* Supp Figure 6: QTL scan by multiple features
+* Supp Figure 7: Distribution of exp propensity by period
+* Supp Figure 8: QTL scan by epoch
 
 ### 4. `analysis/2_mutator_pheno_plots.ipynb`
 
 Figures:
 * 2a: QTL signal
 * 2d: zoom in on trace for QTL signal
-* Supp Figure 4: zoom in on trace for modest peaks
+* Supp Figure 5: zoom in on trace for modest peaks
 
 ### 5. `analysis/2_prep_suppdata.ipynb`
 
@@ -63,8 +63,8 @@ Figures:
 Figures:
 * 2e: mutation rate vs. length
 * 2f: expansion propensity vs. length
-* Supp Figure 8: mutation patterns
-* Supp Figure 9: motif analysis
+* Supp Figure 9: mutation patterns
+* Supp Figure 10: motif analysis
 
 Computes statistics:
 * Z-test proportions by repeat unit length 
@@ -74,7 +74,7 @@ Computes statistics:
 ### 7. `analysis/2_sex_chroms.ipyb`
 
 Figures:
-* Supp Figure 10: sex chroms
+* Supp Figure 11: sex chroms
 
 Computes statistics:
 * Total number of sex chromosome mutations and loci
@@ -87,8 +87,8 @@ Computes statistics:
 Figures:
 * 3a: variants in Msh3
 * 3b: zoom in on 5' end
-* Supp Figure 12: Variant selection
-* Supp Figure 13: Variant selection zoom in on Msh3
+* Supp Figure 13: Variant selection
+* Supp Figure 14: Variant selection zoom in on Msh3
 * Supp Table 1: VEP summary
 * Supp Table 2: VEP impactful variants (DNA repair genes)
 * Supp Table 4: LOD scores and VEP for SVs
@@ -103,22 +103,22 @@ Large files required for `3_vep_annot_per_gene.Rmd` can be downloaded here: http
 ### 9. `analysis/4_eqtl_mapping.Rmd`
 
 Figures:
-* Supp Figure 15: Redo QTL with subsets
-* Supp Figure 16: summary of availability of expression datasets
-* Supp Figure 18: summary of eQTL results
-* Supp Figure 19a: detailed eQTL traces for DNA repair genes
-* Supp Figure 20: co-localization of QTL/eQTL signals
+* Supp Figure 16: Redo QTL with subsets
+* Supp Figure 17: summary of availability of expression datasets
+* Supp Figure 19: summary of eQTL results
+* Supp Figure 20a: detailed eQTL traces for DNA repair genes
+* Supp Figure 21: co-localization of QTL/eQTL signals
 * 4a: traces of best eQTL signals
 
 ### 10. `analysis/4_gene_expr.Rmd`
 
 Figures:
-* Supp Figure 14: summary of expression levels
-* Supp Figure 19b: detailed per-dataset expression levels for DNA repair
+* Supp Figure 15: summary of expression levels
+* Supp Figure 20b: detailed per-dataset expression levels for DNA repair
 * 4b: expression diffs for dna repair genes
 
 ### 11. `analysis/4_eqtl_by_probe.Rmd`
 
 Figures:
-* Supp Figure 17: probe-level analysis for Msh3
-* Supp Figure 21: Detailed probe-level analysis of Msh3
+* Supp Figure 18: probe-level analysis for Msh3
+* Supp Figure 22: Detailed probe-level analysis of Msh3
