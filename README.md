@@ -42,6 +42,7 @@ Computes statistics:
 Figures:
 * 2b: Expansion propensity vs. B/D
 * 2c: Expansion propensity vs. B/D by epoch
+* Supp Figure 4: Genic vs intergenic regions
 * Supp Figure 6: QTL scan by multiple features
 * Supp Figure 7: Distribution of exp propensity by period
 * Supp Figure 8: QTL scan by epoch
@@ -58,7 +59,7 @@ Figures:
 * prepares Supplementary Datasets 1-3
 * Generates auto_info used by `2_mutation_patterns`
 
-### 6. `analysis/2_mutation_patterns.ipyb`
+### 6. `analysis/2_mutation_patterns.ipynb`
 
 Figures:
 * 2e: mutation rate vs. length
@@ -71,7 +72,7 @@ Computes statistics:
 * Correlation of repeat length vs. mutation rate 
 * Correlation of repeat length vs. expansion propensity
 
-### 7. `analysis/2_sex_chroms.ipyb`
+### 7. `analysis/2_sex_chroms.ipynb`
 
 Figures:
 * Supp Figure 11: sex chroms
