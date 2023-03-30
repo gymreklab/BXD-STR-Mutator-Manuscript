@@ -412,7 +412,7 @@ ci_mid = as.double(qtl_ci['pos']);
 			  strip.text.y = element_text(angle = 90),
 			  legend.position = 'none')
 	p
-	ggsave('../pdfs/SuppFig16_GeneExpressionDatasets.pdf', p, w = 8, h = 4)
+	ggsave('../pdfs/SuppFig17_GeneExpressionDatasets.pdf', p, w = 8, h = 4)
 ```
 
 # Collate datasets where strains support %expanded signal
@@ -476,7 +476,7 @@ ci_mid = as.double(qtl_ci['pos']);
 		distinct(GN)
 
 	# save figure
-	ggsave('../pdfs/SuppFig15_eQTLSubsets.pdf', p, w = 10, h = 6)
+	ggsave('../pdfs/SuppFig16_eQTLSubsets.pdf', p, w = 10, h = 6)
 ```
 
 
@@ -768,7 +768,7 @@ Various ways to rank:
 		)
 	p_filt
 
-	ggsave('../pdfs/SuppFig18_eQTLSummary.pdf', p_filt, w = 14, h = 10)
+	ggsave('../pdfs/SuppFig19_eQTLSummary.pdf', p_filt, w = 14, h = 10)
 ```
 
 ## Single panel version
@@ -897,7 +897,7 @@ Various ways to rank:
 		theme_half_open() + 
 		theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
 	p
-	ggsave('../pdfs/SuppFig20_MoreCo-localization_a.pdf', p, w = 8, h = 5)
+	ggsave('../pdfs/SuppFig21_MoreCo-localization_a.pdf', p, w = 8, h = 5)
 ```
 
 ### All dset/gene pairs
@@ -915,7 +915,7 @@ Various ways to rank:
 		theme_half_open() + 
 		theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
 	p
-	ggsave('../pdfs/SuppFig20_MoreCo-localization_b.pdf', p, w = 8, h = 5)
+	ggsave('../pdfs/SuppFig21_MoreCo-localization_b.pdf', p, w = 8, h = 5)
 
 ```
 
@@ -972,7 +972,7 @@ Various ways to rank:
 			axis.title.x = element_blank()
 		)
 	p
-	ggsave('../pdfs/SuppFig20_MoreCo-localization_c.pdf', p, w = 8, h = 4)
+	ggsave('../pdfs/SuppFig21_MoreCo-localization_c.pdf', p, w = 8, h = 4)
 ```
 
 ### eQTL vs. main QTL (finalized)
@@ -1033,7 +1033,7 @@ Various ways to rank:
 		) +
 		labs(x = 'Mb')
 	p
-	ggsave('../pdfs/SuppFig19_DetailedEQTLDNARepair.pdf', p, w = 10, h = 4)
+	ggsave('../pdfs/SuppFig20_DetailedEQTLDNARepair.pdf', p, w = 10, h = 4)
 
 	p_c = p
 ```

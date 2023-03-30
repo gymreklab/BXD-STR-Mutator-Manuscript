@@ -251,7 +251,7 @@ print(paste("Total SNPs in scan ", numsnps))
 		write.csv(final_qtl_res_tetra, '../outs/final_qtl_res_tetra.csv')
 ```
 
-# Visualize scan sensitivity results %expanded (Supp Figure 5)
+# Visualize scan sensitivity results %expanded (Supp Figure 6)
 
 ## Min-points per phenotype and max strains per denovo filtering
 
@@ -373,10 +373,10 @@ perc_expand_final_qtl = all_phenos %>%
 	})
 	p = by_chrom[[1]]
 	p
-	ggsave(fs::path('../pdfs/', 'SuppFig5_SensitivityScan.pdf'), p, w = 16, h = 16)
+	ggsave(fs::path('../pdfs/', 'SuppFig6_SensitivityScan.pdf'), p, w = 16, h = 16)
 ```
 
-# Visualize %expanded by motif length (no filtering) (Supp Figure 6)
+# Visualize %expanded by motif length (no filtering) (Supp Figure 7)
 
 ```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
 	# visualize perc expanded. Note this is with *no filtering*
@@ -404,10 +404,10 @@ perc_expand_final_qtl = all_phenos %>%
 			legend.position = 'top'
 		)
 	p
-	ggsave(fs::path('../pdfs/', 'SuppFig6_PercExpByPeriod.pdf'), p, w = 6, h = 4)
+	ggsave(fs::path('../pdfs/', 'SuppFig7_PercExpByPeriod.pdf'), p, w = 6, h = 4)
 ```
 
-# Visualize QTL signal by epoch (Supp Figure 7)
+# Visualize QTL signal by epoch (Supp Figure 8)
 
 epoch3b has the most power to resolve association, but likely present in all strains
 
@@ -557,7 +557,7 @@ perc_expand_by_epoch_tetra_final = epoch_grps %>%
 			legend.position = 'none'
 		)
 	p
-	ggsave(fs::path('../pdfs/', 'SuppFig7_EpochScan-Tetra.pdf'), p, w = 16, h = 8)
+	ggsave(fs::path('../pdfs/', 'SuppFig8_EpochScan-Tetra.pdf'), p, w = 16, h = 8)
 ```
 
 # Plot founder gt at locus vs. expansion propensity (Figure 2b)
@@ -653,7 +653,7 @@ ggsave(fs::path('../pdfs/', 'Fig2b.pdf'), p, w = 6, h = 8)
 	#write.csv(pheno_vals, '../outs/pheno_vals_tetra.csv')
 ```
 
-# Plot founder gt at locus vs. expansion propensity (SuppFigure intergenic)
+# Plot founder gt at locus vs. expansion propensity (SuppFigure 4 intergenic)
 ```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
 # founder genotypes at max LOD marker for %expanded 
 fou_gt_at_peak = maxmarg(qtl_data$snp_probs[,'13'], minprob = 0.5) %>% 
@@ -697,7 +697,7 @@ p = perc_exp_byhap %>%
   theme_half_open() +
   ylab("Expansion propensity")
 p
-ggsave(fs::path('../pdfs/', 'SuppFig_intergenic.pdf'), p, w = 6, h = 8)
+ggsave(fs::path('../pdfs/', 'SuppFig4_intergenic.pdf'), p, w = 6, h = 8)
 ```
 # Load data 
 
@@ -746,7 +746,7 @@ ggsave(fs::path('../pdfs/', 'SuppFig_intergenic.pdf'), p, w = 6, h = 8)
 	#write.csv(pheno_vals, '../outs/pheno_vals_tetra.csv')
 ```
 
-# Plot founder gt at locus vs. expansion propensity (SuppFigure genic)
+# Plot founder gt at locus vs. expansion propensity (SuppFigure 4 genic)
 ```{r fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
 # founder genotypes at max LOD marker for %expanded 
 fou_gt_at_peak = maxmarg(qtl_data$snp_probs[,'13'], minprob = 0.5) %>% 
@@ -790,7 +790,7 @@ p = perc_exp_byhap %>%
   theme_half_open() +
   ylab("Expansion propensity")
 p
-ggsave(fs::path('../pdfs/', 'SuppFig_genic.pdf'), p, w = 6, h = 8)
+ggsave(fs::path('../pdfs/', 'SuppFig4_genic.pdf'), p, w = 6, h = 8)
 ```
 
 # Plot founder gt at locus vs. expansion propensity by epoch (Figure 2c)

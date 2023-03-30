@@ -328,7 +328,7 @@ h6 {font-size: 0.75em}
 		filter(probe_type == 'probe_array') %>%
 		plt_by_nvars(ycol = 'LOD_snps_covar')
 	p
-	ggsave('../pdfs/SuppFig17_probe-levelanalysis.pdf', p, w = 12, h = 6)
+	ggsave('../pdfs/SuppFig18_probe-levelanalysis.pdf', p, w = 12, h = 6)
 
 ```
 
@@ -498,5 +498,5 @@ h6 {font-size: 0.75em}
 	w = 20; h = 9
 
 	# save figure
-	ggsave('../pdfs/SuppFig21_Detailedprobe-levelanalysisofmsh3.pdf', p, w = w, h = 9)
+	ggsave('../pdfs/SuppFig22_Detailedprobe-levelanalysisofmsh3.pdf', p, w = w, h = 9)
 ```

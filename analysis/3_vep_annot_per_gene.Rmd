@@ -53,8 +53,8 @@ ci_lo = as.double(qtl_ci['ci_lo']); ci_hi = as.double(qtl_ci['ci_hi'])
 	# run query
 	embl_genes = biomaRt::getBM(
 		attributes = attr_to_get,
-		filters = c('chromosome_name', 'start', 'end'), 
-		values = list('13', ci_lo*1e6, ci_hi*1e6), 
+		#filters = c('chromosome_name', 'start', 'end'), 
+		#values = list('13', ci_lo*1e6, ci_hi*1e6), 
 		mart = e102) %>% as_tibble
 
 	# rename
@@ -175,8 +175,8 @@ ci_lo = as.double(qtl_ci['ci_lo']); ci_hi = as.double(qtl_ci['ci_hi'])
     vep_annot = vep_annot %>% mutate(IMPACT = fct_relevel(IMPACT, c('HIGH', 'MODERATE', 'LOW', 'MODIFIER')))
 
 	# filter out loci which don't fit in window
-	vep_annot = vep_annot %>%
-		filter(pos >= ci_lo*1e6 & end <= ci_hi*1e6)
+	#vep_annot = vep_annot %>%
+	#	filter(pos >= ci_lo*1e6 & end <= ci_hi*1e6)
 ```
 
 # Annotated variant counts
@@ -187,6 +187,12 @@ ci_lo = as.double(qtl_ci['ci_lo']); ci_hi = as.double(qtl_ci['ci_hi'])
 		count(loc_type, name = 'n_loci')
 ```
 
+```{r echo=TRUE, fig.width = 6, fig.height = 4, fig.align = 'center', cache = TRUE, eval = TRUE}
+	redux_vep_annot = vep_annot %>%
+		select(!c(STRAND, Amino_acids, Existing_variation, Allele)) %>%
+		distinct
+  write.csv(redux_vep_annot, '../outs/redux_vep_annot.csv')
+```
 # Filter for variants in genes
 
 #. Remove all intergenic variants (as labelled by VEP)
@@ -1335,7 +1341,7 @@ These are the filters that are used at various points on variant/feature pairs. 
 	#ggsave('test.pdf', p, w = 9, h = 8)
 
 	#
-	ggsave(fs::path('../pdfs/', 'SuppFig12_VariantSelection.pdf'), p, w = 9, h = 8)
+	ggsave(fs::path('../pdfs/', 'SuppFig13_VariantSelection.pdf'), p, w = 9, h = 8)
 
 ```
 
@@ -1395,7 +1401,7 @@ These are the filters that are used at various points on variant/feature pairs. 
 	ggsave('test.pdf', p, w = 12, h = 12)
 	
 	# figure print
-	ggsave(fs::path('../pdfs/', 'SuppFig13_VariantSelection-Msh3.pdf'), p, w = 12, h = 12)
+	ggsave(fs::path('../pdfs/', 'SuppFig14_VariantSelection-Msh3.pdf'), p, w = 12, h = 12)
 ```
 
 

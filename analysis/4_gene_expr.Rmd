@@ -355,7 +355,7 @@ ci_mid = as.double(qtl_ci['pos']);
 	ggsave('test.pdf', p, w = 10, h = 10)
 
 	# figure print
-    ggsave('../pdfs/SuppFig14_Summaryofgeneexpressionlevels.pdf', p, w = 10, h = 10)
+    ggsave('../pdfs/SuppFig15_Summaryofgeneexpressionlevels.pdf', p, w = 10, h = 10)
 ```
 
 # Loci of interest
@@ -489,7 +489,7 @@ ci_mid = as.double(qtl_ci['pos']);
 	ggsave('test.pdf', p, w = 8, h = 8)
 
 	# save figure
-	ggsave('../pdfs/SuppFig19_Co-localization_b.pdf', p, w = 8, h = 8)
+	ggsave('../pdfs/SuppFig20_Co-localization_b.pdf', p, w = 8, h = 8)
 
 ```
 
